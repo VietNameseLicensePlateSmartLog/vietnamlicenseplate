@@ -157,7 +157,7 @@ def draw_plate_results(image: Image.Image, plates: list) -> Image.Image:
 
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
 
-        label = f"{text} ({conf:.0%})"
+        label = f"{text} ({conf:.2%})"
 
         text_w = len(label) * 6
         text_h = 10
@@ -188,7 +188,16 @@ def _predict_char(self, char_img: Image.Image, conf3: float) -> tuple:
     alternatives = []
 
     if hasattr(pred, 'probs') and pred.probs is not None:
-        char = pred.names[pred.probs.top1]
+        # Safe lookup: top1 có thể là int hoặc str tùy Ultralytics version
+        top1_idx = pred.probs.top1
+        names = pred.names
+        if isinstance(names, dict):
+            char = names.get(top1_idx, names.get(str(top1_idx), '?'))
+        elif isinstance(names, (list, tuple)):
+            try:
+                char = names[int(top1_idx)]
+            except (IndexError, ValueError):
+                char = '?'
         conf = pred.probs.top1conf.item()
 
         # Lấy top-2 alternatives cho position-based correction
@@ -196,7 +205,14 @@ def _predict_char(self, char_img: Image.Image, conf3: float) -> tuple:
             top5 = pred.probs.top5
             top5conf = pred.probs.top5conf
             for idx in range(1, min(len(top5), 3)):  # skip top1 (index 0), lấy index 1-2
-                alt_char = pred.names[top5[idx]]
+                alt_idx = top5[idx]
+                if isinstance(names, dict):
+                    alt_char = names.get(alt_idx, names.get(str(alt_idx), '?'))
+                elif isinstance(names, (list, tuple)):
+                    try:
+                        alt_char = names[int(alt_idx)]
+                    except (IndexError, ValueError):
+                        alt_char = '?'
                 alt_conf = float(top5conf[idx])
                 alternatives.append((alt_char, alt_conf))
         except Exception:
@@ -268,7 +284,14 @@ class LPRPipeline:
         """Hàm xử lý lõi nhận diện chuỗi biển số từ PIL Image.
         Luồng: Stage1 → Deskew → Pad → Preprocess → Stage2 → Filter → Sort
                 → Stage3 Dual Classification → Validation → Kết quả"""
-        det1 = self.stage1.predict(pil_img, imgsz=imgsz1, conf=conf1, device=self.device, verbose=False)[0]
+        try:
+            det1 = self.stage1.predict(pil_img, imgsz=imgsz1, conf=conf1, device=self.device, verbose=False)[0]
+        except KeyError as e:
+            print(f"[ERROR] Stage1 predict KeyError: {e} — names={getattr(det1, 'names', 'N/A') if 'det1' in dir() else 'no det1'}")
+            raise
+        except Exception as e:
+            print(f"[ERROR] Stage1 predict failed: {type(e).__name__}: {e}")
+            raise
 
         # NMS trên Stage 1
         raw_plate_boxes = [tuple(map(int, b.xyxy[0].tolist())) for b in det1.boxes]
@@ -305,7 +328,16 @@ class LPRPipeline:
             plate_clean = preprocess_plate(plate_padded)
 
             # Bước 5: Stage 2 — Detect ký tự
-            det2 = self.stage2.predict(plate_clean, imgsz=640, conf=conf2, device=self.device, verbose=False)[0]
+            try:
+                det2 = self.stage2.predict(plate_clean, imgsz=640, conf=conf2, device=self.device, verbose=False)[0]
+            except KeyError as e:
+                print(f"[ERROR] Stage2 predict KeyError: {e}")
+                plates.append({'bbox': [x1, y1, x2, y2], 'text': '???', 'conf': c1_conf})
+                continue
+            except Exception as e:
+                print(f"[ERROR] Stage2 predict failed: {type(e).__name__}: {e}")
+                plates.append({'bbox': [x1, y1, x2, y2], 'text': '???', 'conf': c1_conf})
+                continue
             if det2.boxes is None or len(det2.boxes) == 0:
                 plates.append({'bbox': [x1, y1, x2, y2], 'text': '???', 'conf': c1_conf})
                 continue
@@ -335,7 +367,7 @@ class LPRPipeline:
 
                 if pred_conf >= conf3:
                     plate_text += str(pred_char)
-                    plate_char_conf.append(pred_conf)
+                    plate_char_conf.append(round(pred_conf, 2))
                 else:
                     plate_text += '?'
                     plate_char_conf.append(0.0)
@@ -367,7 +399,7 @@ class LPRPipeline:
             plates.append({
                 'bbox': [x1, y1, x2, y2],
                 'text': plate_text,
-                'conf': round(avg_conf, 1),
+                'conf': round(avg_conf, 2),
                 'char_confs': plate_char_conf
             })
 

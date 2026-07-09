@@ -76,6 +76,7 @@ def compute_track_stats(char_votes: dict, char_confs: dict) -> list:
 
         margin = (winner_votes - runner_up_votes) / total_votes if total_votes > 0 else 0
         winner_avg_conf = confs[winner_char] / winner_votes if winner_votes > 0 else 0
+        # Position Confidence = Margin × Avg Confidence
         char_confidence = margin * winner_avg_conf
 
         stats.append({
@@ -123,16 +124,17 @@ def build_alt_text_from_stats(stats: list, alt_position: int) -> str:
 
 def compute_alt_plate_confidence(stats: list, alt_position: int) -> float:
     """Geometric mean với alt_position dùng runner_up thay vì winner.
-    Công thức từ video-process.ipynb."""
+    Alt confidence = main_plate_conf × (runner_up_votes / winner_votes)
+    Giữ nguyên avg_conf của winner, chỉ scale theo tỷ lệ phiếu."""
     if not stats:
         return 0.0
     product = 1.0
     for s in stats:
         if s['position'] == alt_position and s['winner_votes'] > 0:
-            alt_conf = s['char_confidence'] * (s['runner_up_votes'] / s['winner_votes'])
-            term = alt_conf
+            # Scale confidence theo tỷ lệ phiếu runner_up/winner
+            term = s['char_confidence'] * (s['runner_up_votes'] / s['winner_votes'])
         else:
-            term = s['char_confidence']
+            term = s['char_confidence']  # margin × avg_conf (đã tính sẵn)
         product *= max(term, 1e-6)
     n = len(stats)
     return product ** (1.0 / n)

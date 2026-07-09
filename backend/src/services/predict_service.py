@@ -27,10 +27,58 @@ from src.utils.helpers import save_snapshot_image, cleanup_file, log_activity, g
 # Lưu trữ trạng thái video task cũ dùng UUID
 tasks_db = {}
 
+def _safe_write_frame(writer, frame, frame_idx, writer_enabled, output_path, fps, width, height):
+    """Ghi frame vào output video một cách an toàn.
+    Trả về (writer, writer_enabled): writer có thể thay đổi nếu recovery."""
+    if not writer_enabled or writer is None:
+        return writer, writer_enabled
+
+    try:
+        ret = writer.write(frame)
+        # OpenCV VideoWriter.write() trả về None hoặc bool
+        # Không thể kiểm tra return value đáng tin → catch exception
+        return writer, writer_enabled
+    except Exception as e:
+        print(f"[WARN] VideoWriter.write() failed at frame {frame_idx}: {type(e).__name__}: {e}")
+
+        # Thử recovery 1 lần: release → tạo lại với XVID
+        try:
+            if writer:
+                writer.release()
+        except Exception:
+            pass
+
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            new_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+            if new_writer.isOpened():
+                try:
+                    new_writer.write(frame)
+                    print(f"[INFO] VideoWriter recovered with XVID at frame {frame_idx}")
+                    return new_writer, True
+                except Exception as e2:
+                    print(f"[WARN] XVID recovery write also failed: {e2}")
+                    new_writer.release()
+            else:
+                print("[WARN] XVID VideoWriter also failed to open")
+        except Exception as e2:
+            print(f"[WARN] XVID recovery error: {e2}")
+
+        # Recovery thất bại → tắt writer, tiếp tục processing mà không ghi video
+        print(f"[WARN] ⚠️ VideoWriter disabled at frame {frame_idx}. "
+              "Processing continues — detections are still saved to database.")
+        return None, False
+
+
 def process_video_background(job_id: int, input_path: str, output_path: str, filename: str, user_id: int | None = None, region_id: int | None = None):
-    """Hàm xử lý video chạy ngầm trong luồng riêng biệt, cập nhật trực tiếp vào DB."""
+    """Hàm xử lý video chạy ngầm trong luồng riêng biệt, cập nhật trực tiếp vào DB.
+    VideoWriter được fault-tolerant: nếu codec fail → tiếp tục xử lý detection mà không crash."""
     cap = None
     writer = None
+    writer_enabled = True
+    frame_idx = 0
+    total_frames = 0
+
     try:
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
@@ -43,27 +91,30 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
         file_size = os.path.getsize(input_path) if os.path.exists(input_path) else 0
         duration = total_frames / fps if fps > 0 else 0.0
 
-        # Kiểm tra dung lượng ổ đĩa còn đủ không (dự phòng ~3x kích thước input)
-        required_space = file_size * 3  # Dự phòng 3x dung lượng input
+        print(f"[LPR] Video: {filename} | {width}x{height} | {fps:.1f}fps | "
+              f"{total_frames} frames | {duration:.1f}s | {file_size // (1024*1024)}MB")
+
+        # Kiểm tra dung lượng ổ đĩa
         temp_dir = tempfile.gettempdir()
         try:
             disk_usage = shutil.disk_usage(temp_dir)
-            free_space = disk_usage.free
-            if required_space > free_space and free_space < 500 * 1024 * 1024:  # < 500MB free
-                raise Exception(f"Không đủ dung lượng ổ đĩa: cần ~{required_space // (1024*1024)}MB, chỉ còn {free_space // (1024*1024)}MB trống.")
+            free_mb = disk_usage.free // (1024 * 1024)
+            print(f"[LPR] Disk free: {free_mb}MB on {temp_dir}")
+            if free_mb < 500:
+                raise Exception(f"Không đủ dung lượng ổ đĩa: chỉ còn {free_mb}MB trống trên {temp_dir}.")
         except Exception as disk_err:
             if "Không đủ dung lượng" in str(disk_err):
                 raise
             # Nếu không kiểm tra được disk thì bỏ qua
 
-        # Kiểm tra GPU memory trước khi bắt đầu
+        # Kiểm tra GPU memory
         if torch.cuda.is_available():
-            gpu_mem_free = torch.cuda.mem_get_info(0)[0] / 1024**2  # MB free
+            gpu_mem_free = torch.cuda.mem_get_info(0)[0] / 1024**2
             print(f"[LPR] GPU memory free: {gpu_mem_free:.0f} MB")
-            if gpu_mem_free < 500:  # < 500MB free GPU
+            if gpu_mem_free < 500:
                 print(f"[LPR] ⚠️  GPU memory thấp ({gpu_mem_free:.0f}MB free), có thể gặp OOM")
 
-        # Cập nhật thông tin ban đầu của video vào database
+        # Cập nhật DB
         with SessionLocal() as db:
             job = db.query(models.VideoJob).filter(models.VideoJob.id == job_id).first()
             if job:
@@ -74,36 +125,48 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
                 job.file_size = file_size
                 db.commit()
 
+        # Tạo VideoWriter — thử mp4v trước, fallback XVID
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         if not writer.isOpened():
+            print(f"[WARN] mp4v codec failed, trying XVID...")
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-            if not writer.isOpened():
-                raise Exception("Không khởi tạo được VideoWriter.")
+            # Đổi phần mở rộng output sang .avi cho XVID
+            output_path_avi = os.path.splitext(output_path)[0] + '.avi'
+            writer = cv2.VideoWriter(output_path_avi, fourcc, fps, (width, height))
+            if writer.isOpened():
+                output_path = output_path_avi  # Dùng path mới
+                print(f"[INFO] Using XVID codec → {output_path}")
+            else:
+                writer = None
+                writer_enabled = False
+                print(f"[WARN] ⚠️ Không tạo được VideoWriter (mp4v + XVID đều fail). "
+                      "Tiếp tục xử lý detection mà không ghi video output.")
+        else:
+            print(f"[INFO] Using mp4v codec → {output_path}")
 
         font = cv2.FONT_HERSHEY_SIMPLEX
         frame_idx = 0
         processed_count = 0
         start_time = time.time()
         first_inference_done = False
+        write_fail_count = 0
+        MAX_WRITE_FAILS = 5  # Tắt writer sau 5 lần fail liên tiếp
 
         service = init_lpr_service()
         centroid_tracker = CentroidTracker()
 
         # Frame skip: xử lý ~2 frames/giây video
-        # Với video 30fps → xử lý mỗi 15 frame → ~1508 frames cần inference cho video 11309 frames
         target_fps = 2
         frame_skip = max(1, int(fps / target_fps))
 
         # Giảm độ phân giải Stage 1 cho video (1024 thay vì 1280)
         stage1_imgsz = 1024
 
-        # Hiển thị box: giữ kết quả detection trong0.5s (15 frames ở30fps)
-        # last_plates: list plates gần nhất, last_plates_frame: frame_idx khi detect
+        # Hiển thị box: giữ kết quả detection trong 0.5s
         last_plates = []
         last_plates_frame = -999
-        PLATE_DISPLAY_FRAMES = max(1, int(fps * 0.5))  # ~15 frames ở30fps
+        PLATE_DISPLAY_FRAMES = max(1, int(fps * 0.5))
 
         def draw_boxes_on_frame(frame, plates):
             """Vẽ bbox + text lên frame."""
@@ -111,7 +174,8 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
                 x1, y1, x2, y2 = plate['bbox']
                 plate_text = plate['text']
                 plate_conf = plate.get('conf', 0)
-                label = f"{plate_text} {plate_conf:.0%}" if plate_conf else plate_text
+                # Hiển thị confidence với 2 chữ số thập phân (VD: 99.70%)
+                label = f"{plate_text} {plate_conf:.2%}" if plate_conf else plate_text
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(frame, label, (x1, y1 - 10), font, 0.8, (0, 255, 0), 2)
 
@@ -120,160 +184,155 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
             if not ret:
                 break
 
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_img = Image.fromarray(frame_rgb)
+            try:
+                # Validate frame
+                if frame is None or frame.size == 0:
+                    frame_idx += 1
+                    continue
 
-            # Skip frame: vẫn vẽ box gần nhất nếu trong khoảng0.5s
-            if frame_idx % frame_skip != 0:
-                if last_plates and (frame_idx - last_plates_frame) <= PLATE_DISPLAY_FRAMES:
-                    draw_boxes_on_frame(frame, last_plates)
-                writer.write(frame)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                pil_img = Image.fromarray(frame_rgb)
+
+                # Skip frame: vẫn vẽ box gần nhất nếu trong khoảng 0.5s
+                if frame_idx % frame_skip != 0:
+                    if last_plates and (frame_idx - last_plates_frame) <= PLATE_DISPLAY_FRAMES:
+                        draw_boxes_on_frame(frame, last_plates)
+                    if writer_enabled:
+                        writer, writer_enabled = _safe_write_frame(
+                            writer, frame, frame_idx, writer_enabled, output_path, fps, width, height
+                        )
+                    frame_idx += 1
+                    continue
+
+                # --- Frame cần inference ---
+                plates = []
+                try:
+                    plates = service.run_inference(
+                        pil_img, settings.CONF_S1_VID, settings.CONF_S2_VID, settings.CONF_S3_VID, stage1_imgsz
+                    )
+                except torch.cuda.OutOfMemoryError:
+                    torch.cuda.empty_cache()
+                    try:
+                        plates = service.run_inference(
+                            pil_img, settings.CONF_S1_VID, settings.CONF_S2_VID, settings.CONF_S3_VID, 640
+                        )
+                    except Exception:
+                        plates = []
+                    torch.cuda.empty_cache()
+                except Exception as e:
+                    plates = []
+
+                if not first_inference_done:
+                    first_inference_done = True
+
+                if plates:
+                    last_plates = plates
+                    last_plates_frame = frame_idx
+
+                draw_boxes_on_frame(frame, plates)
+
+                # Centroid Tracking
+                valid_plates = []
+                for plate in plates:
+                    plate_text = plate['text']
+                    if not plate_text or plate_text == "???" or "?" in plate_text:
+                        continue
+                    if not is_valid_plate(plate_text):
+                        continue
+                    if get_plate_format_score(plate_text) <= 0:
+                        continue
+                    valid_plates.append(plate)
+
+                finalized = centroid_tracker.update(valid_plates, frame_idx=frame_idx)
+
+                # Lưu finalized detections vào DB
+                for result in finalized:
+                    try:
+                        final_text = result['text']
+                        final_conf = result['conf']
+                        final_bbox = result.get('bbox')
+                        format_score = result.get('format_score', 0)
+                        if not is_valid_plate(final_text) or format_score <= 0:
+                            continue
+                        if final_bbox:
+                            annotated_img = draw_plate_results(pil_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
+                        else:
+                            annotated_img = draw_plate_results(pil_img, [{'bbox': [0, 0, 100, 100], 'text': final_text, 'conf': final_conf}])
+                        snapshot_rel_path = save_snapshot_image(annotated_img)
+                        with SessionLocal() as db:
+                            db_item = models.Detection(
+                                plate_text=final_text, plate_confidence=final_conf,
+                                alt_text=result.get('alt_text'), alt_confidence=result.get('alt_confidence'),
+                                total_frames=result.get('total_frames', 0),
+                                frame_start=result.get('frame_start'), frame_end=result.get('frame_end'),
+                                image_path=snapshot_rel_path, source_type="video",
+                                video_job_id=job_id, user_id=user_id, region_id=region_id
+                            )
+                            db.add(db_item)
+                            db.commit()
+                    except Exception:
+                        pass
+
+                # Ghi frame output
+                if writer_enabled:
+                    writer, writer_enabled = _safe_write_frame(
+                        writer, frame, frame_idx, writer_enabled, output_path, fps, width, height
+                    )
+
+                frame_idx += 1
+                processed_count += 1
+
+                # Progress update
+                if processed_count % 2 == 0 or frame_idx >= total_frames:
+                    elapsed = time.time() - start_time
+                    raw_fps = frame_idx / elapsed if elapsed > 0 else 0.0
+                    pct = int((frame_idx / total_frames) * 100) if total_frames > 0 else 0
+                    try:
+                        with SessionLocal() as db:
+                            job = db.query(models.VideoJob).filter(models.VideoJob.id == job_id).first()
+                            if job:
+                                job.progress = pct
+                                job.fps = round(raw_fps, 1)
+                                job.current_frame = frame_idx
+                                db.commit()
+                    except Exception:
+                        pass
+
+                    if processed_count % 20 == 0 and torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+
+            except Exception as frame_err:
+                # BẤT KỲ lỗi nào trong loop body → log + skip frame, KHÔNG crash
+                _frame_err_tb = traceback.format_exc()
+                print(f"[ERROR] Frame {frame_idx} error: {type(frame_err).__name__}: {frame_err}")
+                print(f"[ERROR] Frame {frame_idx} traceback:\n{_frame_err_tb}")
+
+                # Ghi traceback ra file để debug
+                try:
+                    _log_path = os.path.join(tempfile.gettempdir(), 'lpr_frame_errors.log')
+                    with open(_log_path, 'a', encoding='utf-8') as _f:
+                        _f.write(f"\n=== Frame {frame_idx} | Job {job_id} ===\n")
+                        _f.write(f"{type(frame_err).__name__}: {frame_err}\n")
+                        _f.write(_frame_err_tb)
+                        _f.write("\n")
+                    print(f"[ERROR] Traceback logged to: {_log_path}")
+                except Exception:
+                    pass
+
+                # Skip frame lỗi, tiếp tục frame tiếp theo
                 frame_idx += 1
                 continue
 
-            # --- Đã đến frame cần xử lý inference ---
-            try:
-                plates = service.run_inference(
-                    pil_img, settings.CONF_S1_VID, settings.CONF_S2_VID, settings.CONF_S3_VID, stage1_imgsz
-                )
-            except torch.cuda.OutOfMemoryError:
-                print(f"[WARN] CUDA OOM at frame {frame_idx}, clearing cache and retrying with smaller imgsz...")
-                torch.cuda.empty_cache()
-                try:
-                    plates = service.run_inference(
-                        pil_img, settings.CONF_S1_VID, settings.CONF_S2_VID, settings.CONF_S3_VID, 640
-                    )
-                except Exception as e2:
-                    print(f"[WARN] Inference failed again at frame {frame_idx}: {e2}")
-                    plates = []
-                torch.cuda.empty_cache()
-            except Exception as e:
-                print(f"[WARN] Inference error at frame {frame_idx}: {type(e).__name__}: {e}")
-                plates = []
+        # --- Xử lý sau khi đọc hết video ---
+        if cap:
+            cap.release()
+        if writer and writer_enabled:
+            writer.release()
+            writer = None
 
-            if not first_inference_done:
-                first_inference_done = True
-
-            # Cập nhật last_plates nếu có detection mới
-            if plates:
-                last_plates = plates
-                last_plates_frame = frame_idx
-
-            # Vẽ bbox lên frame output
-            draw_boxes_on_frame(frame, plates)
-
-            # Centroid Tracking + Character Voting
-            # Lọc bỏ detection không hợp lệ trước khi tracking
-            # Chỉ giữ biển có format đúng: 8-10 ký tự, XXLetterXX
-            valid_plates = []
-            for plate in plates:
-                plate_text = plate['text']
-                if not plate_text or plate_text == "???" or "?" in plate_text:
-                    continue
-                if not is_valid_plate(plate_text):
-                    continue
-                if get_plate_format_score(plate_text) <= 0:
-                    continue
-                valid_plates.append(plate)
-
-            finalized = centroid_tracker.update(valid_plates, frame_idx=frame_idx)
-
-            # Lưu các track đã finalize (biển số đã ổn định) vào DB
-            for result in finalized:
-                try:
-                    final_text = result['text']
-                    final_conf = result['conf']
-                    final_bbox = result.get('bbox')
-                    format_score = result.get('format_score', 0)
-
-                    # Kiểm tra format biển số VN + format score
-                    if not is_valid_plate(final_text):
-                        continue
-                    if format_score <= 0:
-                        continue
-
-                    # Vẽ snapshot với bounding box thật (nếu có)
-                    if final_bbox:
-                        annotated_img = draw_plate_results(pil_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
-                    else:
-                        annotated_img = draw_plate_results(pil_img, [{'bbox': [0, 0, 100, 100], 'text': final_text, 'conf': final_conf}])
-                    snapshot_rel_path = save_snapshot_image(annotated_img)
-
-                    with SessionLocal() as db:
-                        db_item = models.Detection(
-                            plate_text=final_text,
-                            plate_confidence=final_conf,
-                            alt_text=result.get('alt_text'),
-                            alt_confidence=result.get('alt_confidence'),
-                            total_frames=result.get('total_frames', 0),
-                            frame_start=result.get('frame_start'),
-                            frame_end=result.get('frame_end'),
-                            image_path=snapshot_rel_path,
-                            source_type="video",
-                            video_job_id=job_id,
-                            user_id=user_id,
-                            region_id=region_id
-                        )
-                        db.add(db_item)
-                        db.commit()
-                except Exception as e:
-                    print(f"[WARN] Save detection error: {e}")
-
-            try:
-                writer.write(frame)
-            except Exception as e:
-                print(f"[WARN] VideoWriter write error at frame {frame_idx}: {e}")
-                # Thử tạo lại VideoWriter với codec XVID
-                try:
-                    writer.release()
-                    fourcc_fallback = cv2.VideoWriter_fourcc(*'XVID')
-                    writer = cv2.VideoWriter(output_path, fourcc_fallback, fps, (width, height))
-                    if writer.isOpened():
-                        writer.write(frame)
-                        print(f"[INFO] VideoWriter recovered with XVID codec")
-                    else:
-                        print(f"[ERROR] VideoWriter recovery failed")
-                except Exception as e2:
-                    print(f"[ERROR] VideoWriter recovery failed: {e2}")
-
-            frame_idx += 1
-            processed_count += 1
-
-            # Cập nhật progress mỗi2 processed frames
-            if processed_count % 2 == 0 or frame_idx >= total_frames:
-                elapsed = time.time() - start_time
-                # Tốc độ: raw frames đọc được / giây (đồng bộ với current_frame)
-                raw_fps = frame_idx / elapsed if elapsed > 0 else 0.0
-                pct = int((frame_idx / total_frames) * 100) if total_frames > 0 else 0
-
-                # ETA = số raw frames còn lại / tốc độ raw fps
-                remaining = total_frames - frame_idx
-                eta_seconds = int(remaining / raw_fps) if raw_fps > 0 else 0
-
-                try:
-                    with SessionLocal() as db:
-                        job = db.query(models.VideoJob).filter(models.VideoJob.id == job_id).first()
-                        if job:
-                            job.progress = pct
-                            job.fps = round(raw_fps, 1)
-                            job.current_frame = frame_idx
-                            db.commit()
-                except Exception as e:
-                    print(f"[WARN] Progress update DB error: {e}")
-
-                # Giải phóng GPU memory định kỳ (mỗi20 processed frames)
-                # Tránh tích lũy tensor → OOM trên GPU có VRAM thấp (6GB RTX 3050)
-                if processed_count % 20 == 0 and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    gpu_mem_free = torch.cuda.mem_get_info(0)[0] / 1024**2
-                    if gpu_mem_free < 300:
-                        print(f"[WARN] GPU memory critically low: {gpu_mem_free:.0f}MB free at frame {frame_idx}")
-
-        cap.release()
-        writer.release()
         cleanup_file(input_path)
 
-        # Flush tất cả kết quả đã merge còn lại trong buffer
+        # Flush tất cả kết quả merge còn lại trong buffer
         merged_results = centroid_tracker.flush_merged()
         for result in merged_results:
             try:
@@ -287,7 +346,6 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
                 if format_score <= 0:
                     continue
 
-                # Vẽ snapshot — dùng ảnh trắng nếu pil_img không khả dụng
                 try:
                     if final_bbox and pil_img:
                         annotated_img = draw_plate_results(pil_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
@@ -320,6 +378,7 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
             except Exception as e:
                 print(f"[WARN] Flush merged error: {e}")
 
+        # Hoàn thành — output_path có thể None nếu writer bị tắt
         with SessionLocal() as db:
             job = db.query(models.VideoJob).filter(models.VideoJob.id == job_id).first()
             if job:
@@ -327,29 +386,40 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
                 job.progress = 100
                 job.current_frame = total_frames
                 job.completed_at = get_vietnam_now()
-                job.output_video = output_path
+                if writer_enabled or os.path.exists(output_path):
+                    job.output_video = output_path
+                else:
+                    job.output_video = None
                 db.commit()
+
+        print(f"[LPR] ✅ Video processing completed: {frame_idx} frames, "
+              f"writer={'ON' if writer_enabled else 'OFF (detections only)'}")
 
     except Exception as e:
         tb = traceback.format_exc()
-        print(f"[ERROR] Video processing failed at frame {frame_idx if 'frame_idx' in dir() else '?'}/{total_frames if 'total_frames' in dir() else '?'}: {e}")
+        _fi = frame_idx if 'frame_idx' in dir() else '?'
+        _tf = total_frames if 'total_frames' in dir() and total_frames else '?'
+        print(f"[ERROR] Video processing FAILED at frame {_fi}/{_tf}: {type(e).__name__}: {e}")
         print(f"[ERROR] Full traceback:\n{tb}")
 
         if cap:
-            cap.release()
+            try:
+                cap.release()
+            except Exception:
+                pass
         if writer:
-            writer.release()
+            try:
+                writer.release()
+            except Exception:
+                pass
         cleanup_file(input_path)
         cleanup_file(output_path)
 
-        # Hiển thị lỗi chi tiết hơn cho frontend
-        error_detail = str(e)
-        if "CUDA" in error_detail or "out of memory" in error_detail.lower():
-            error_detail = f"GPU hết bộ nhớ (CUDA OOM): {e}. Thử giảm độ phân giải video hoặc dùng CPU."
-        elif "No space left" in error_detail or "disk" in error_detail.lower():
+        error_detail = f"{type(e).__name__}: {e}"
+        if "CUDA" in str(e) or "out of memory" in str(e).lower():
+            error_detail = f"GPU hết bộ nhớ (CUDA OOM): {e}"
+        elif "No space left" in str(e) or "disk" in str(e).lower():
             error_detail = f"Không đủ dung lượng ổ đĩa: {e}"
-        elif "mp4v" in error_detail or "VideoWriter" in error_detail:
-            error_detail = f"Lỗi codec video output: {e}"
 
         with SessionLocal() as db:
             job = db.query(models.VideoJob).filter(models.VideoJob.id == job_id).first()

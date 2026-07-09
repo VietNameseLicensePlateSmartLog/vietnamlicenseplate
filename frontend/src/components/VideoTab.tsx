@@ -11,6 +11,7 @@ interface TaskStatus {
   current_frame: number;
   total_frames: number;
   error: string | null;
+  eta_seconds?: number;
 }
 
 function formatBytes(bytes: number, decimals = 2): string {
@@ -20,6 +21,17 @@ function formatBytes(bytes: number, decimals = 2): string {
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+function formatETA(seconds: number): string {
+  if (seconds <= 0) return 'Đang tính...';
+  if (seconds < 60) return `~${seconds} giây`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins < 60) return `~${mins} phút ${secs}s`;
+  const hrs = Math.floor(mins / 60);
+  const remainMins = mins % 60;
+  return `~${hrs}h ${remainMins} phút`;
 }
 
 export default function VideoTab() {
@@ -277,13 +289,20 @@ export default function VideoTab() {
               <div className="stats-grid mt-4">
                 <div className="stat-box">
                   <span className="stat-title">Tốc độ xử lý</span>
-                  <span className="stat-value">{taskStatus.fps.toFixed(1)} FPS</span>
+                  <span className="stat-value">{taskStatus.fps.toFixed(1)} khung hình/giây</span>
                 </div>
                 <div className="stat-box">
                   <span className="stat-title">Khung hình hiện tại</span>
-                  <span className="stat-value">{taskStatus.current_frame} / {taskStatus.total_frames}</span>
+                  <span className="stat-value">{taskStatus.current_frame.toLocaleString()} / {taskStatus.total_frames.toLocaleString()}</span>
                 </div>
               </div>
+
+              {/* ETA = (frames còn lại) / fps, cả backend và frontend đều dùng raw frames */}
+              {isProcessing && taskStatus.fps > 0 && taskStatus.current_frame > 0 && taskStatus.current_frame < taskStatus.total_frames && (
+                <div className="mt-3" style={{ textAlign: 'center', opacity: 0.8, fontSize: '0.9rem' }}>
+                  <span>⏱️ Ước tính còn lại: {formatETA(Math.ceil((taskStatus.total_frames - taskStatus.current_frame) / taskStatus.fps))}</span>
+                </div>
+              )}
 
               <div className="action-section mt-5">
                 {/* Processing spinner */}

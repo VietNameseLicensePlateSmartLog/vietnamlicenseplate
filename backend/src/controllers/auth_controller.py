@@ -31,3 +31,7 @@ class AuthController:
     @staticmethod
     async def logout(payload: schemas.ForgotPasswordRequest, request: Request, db: Session):
         return await AuthService.logout(payload, request, db)
+
+    @staticmethod
+    async def test_email(email: str):
+        return await AuthService.test_email(email)

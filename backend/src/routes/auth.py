@@ -33,3 +33,8 @@ async def reset_password(payload: schemas.ResetPasswordRequest, db: Session = De
 @router.post("/logout")
 async def logout(payload: schemas.ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
     return await AuthController.logout(payload, request, db)
+
+@router.post("/test-email")
+async def test_email(email: str = "test@gmail.com"):
+    """Test gửi email OTP — dùng debug khi SMTP không hoạt động."""
+    return await AuthController.test_email(email)

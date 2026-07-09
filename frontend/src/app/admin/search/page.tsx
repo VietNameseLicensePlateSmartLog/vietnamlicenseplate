@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
+import { formatVnTime } from '@/lib/utils';
 
 interface SearchResult {
   id: number;
   plate_text: string;
   plate_confidence: number;
+  alt_text: string | null;
+  alt_confidence: number | null;
+  total_frames: number | null;
   image_path: string;
   source_type: string;
   region_id: number | null;
@@ -208,7 +212,7 @@ export default function SearchDetections() {
                 </tr>
               ) : (
                 results.map(item => {
-                  const formattedTime = item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : 'N/A';
+                  const formattedTime = formatVnTime(item.created_at);
                   return (
                     <tr key={item.id}>
                       <td style={{ color: 'rgba(255,255,255,0.4)' }}>#{item.id}</td>
@@ -229,6 +233,11 @@ export default function SearchDetections() {
                         <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.05rem', letterSpacing: '1px', background: 'rgba(255,255,255,0.05)', padding: '3px 8px', borderRadius: '4px' }}>
                           {item.plate_text}
                         </span>
+                        {item.alt_text && (
+                          <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: '3px', fontStyle: 'italic' }}>
+                            Alt: {item.alt_text} ({Math.round((item.alt_confidence || 0) * 100)}%)
+                          </div>
+                        )}
                       </td>
                       <td style={{ color: item.plate_confidence >= 0.8 ? '#34d399' : '#fbbf24', fontWeight: 600 }}>
                         {Math.round(item.plate_confidence * 100)}%

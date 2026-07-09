@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
+import { formatVnTime } from '@/lib/utils';
 
 interface ActivityLog {
   id: number;
@@ -85,7 +86,7 @@ export default function ActivityLog() {
                 </tr>
               ) : (
                 logs.map(log => {
-                  const formattedTime = log.created_at ? new Date(log.created_at).toLocaleString('vi-VN') : 'N/A';
+                  const formattedTime = formatVnTime(log.created_at);
                   
                   // Phân biệt màu sắc dựa trên hành động
                   let actionColor = '#fff';

@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
+import { formatVnTime } from '@/lib/utils';
 
 interface UnverifiedDetection {
   id: number;
   plate_text: string;
   plate_confidence: number;
+  alt_text: string | null;
+  alt_confidence: number | null;
+  total_frames: number | null;
   image_path: string;
   source_type: string;
   created_at: string;
@@ -114,7 +118,7 @@ export default function Verification() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
           {items.map(item => {
-            const formattedTime = item.created_at ? new Date(item.created_at).toLocaleString('vi-VN') : 'N/A';
+            const formattedTime = formatVnTime(item.created_at);
             const isSaving = actionLoading[item.id];
             
             return (
@@ -154,6 +158,14 @@ export default function Verification() {
                       {Math.round(item.plate_confidence * 100)}%
                     </span>
                   </div>
+                  {item.alt_text && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.4)' }}>Biển phụ:</span>
+                      <span style={{ color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' }}>
+                        {item.alt_text} ({Math.round((item.alt_confidence || 0) * 100)}%)
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Input chỉnh sửa & Nút xác minh */}

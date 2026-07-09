@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from src.config.settings import settings
 from src.models import models, schemas
 from src.utils.security import hash_password, verify_password
-from src.utils.email import send_otp_email
-from src.utils.helpers import log_activity
+from src.utils.email import send_otp_email, test_smtp_connection
+from src.utils.helpers import log_activity, get_vietnam_now
 
 class AuthService:
     @staticmethod
@@ -53,15 +53,20 @@ class AuthService:
             user_id=user.id,
             token=otp,
             type='email_verify',
-            expires_at=datetime.utcnow() + timedelta(minutes=5)
+            expires_at=get_vietnam_now() + timedelta(minutes=5)
         )
         db.add(db_token)
         db.commit()
         
         is_smtp_configured = bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
         if is_smtp_configured:
-            background_tasks.add_task(send_otp_email, email, otp)
-            message = "Mã OTP xác thực đã được gửi về Gmail của bạn."
+            # Gửi email đồng bộ để kiểm tra kết quả
+            email_sent = send_otp_email(email, otp)
+            if email_sent:
+                message = "Mã OTP xác thực đã được gửi về Gmail của bạn."
+            else:
+                print(f"\n[DEVELOPMENT MODE] Register OTP for {username} ({email}) is: {otp}\n")
+                message = f"Gửi email thất bại. [Dev Mode] OTP của bạn là: {otp}"
         else:
             print(f"\n[DEVELOPMENT MODE] OTP code for {username} ({email}) is: {otp}\n")
             message = f"Đăng ký tạm thời thành công. [Dev Mode] OTP của bạn là: {otp}"
@@ -99,7 +104,7 @@ class AuthService:
         if not token_record:
             raise HTTPException(status_code=400, detail="Mã OTP không chính xác.")
             
-        if datetime.utcnow() > token_record.expires_at:
+        if get_vietnam_now().replace(tzinfo=None) > token_record.expires_at:
             raise HTTPException(status_code=400, detail="Mã OTP đã hết hạn. Vui lòng gửi lại mã mới.")
             
         user.is_verified = 1
@@ -126,15 +131,20 @@ class AuthService:
             user_id=user.id,
             token=otp,
             type='email_verify',
-            expires_at=datetime.utcnow() + timedelta(minutes=5)
+            expires_at=get_vietnam_now() + timedelta(minutes=5)
         )
         db.add(db_token)
         db.commit()
         
         is_smtp_configured = bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
         if is_smtp_configured:
-            background_tasks.add_task(send_otp_email, user.email, otp)
-            message = "Mã OTP mới đã được gửi về Gmail của bạn."
+            # Gửi email đồng bộ để kiểm tra kết quả
+            email_sent = send_otp_email(user.email, otp)
+            if email_sent:
+                message = "Mã OTP mới đã được gửi về Gmail của bạn."
+            else:
+                print(f"\n[DEVELOPMENT MODE] Resent OTP for {username} ({user.email}) is: {otp}\n")
+                message = f"Gửi email thất bại. [Dev Mode] OTP mới là: {otp}"
         else:
             print(f"\n[DEVELOPMENT MODE] Resent OTP code for {username} ({user.email}) is: {otp}\n")
             message = f"Gửi lại OTP thành công. [Dev Mode] OTP mới là: {otp}"
@@ -152,22 +162,7 @@ class AuthService:
         username = credentials.username.strip()
         password = credentials.password
         client_ip = request.client.host if request.client else ""
-        
-        if username == "admin" and password == "admin":
-            log_activity(db, None, "Đăng nhập", f"Tài khoản admin mặc định đăng nhập thành công.", client_ip)
-            return {
-                "status": "success",
-                "message": "Đăng nhập thành công.",
-                "user": {
-                    "id": 0,
-                    "username": "admin",
-                    "email": "admin@lpr.com",
-                    "role": "admin",
-                    "is_verified": 1,
-                    "is_active": True
-                }
-            }
-            
+
         user = db.query(models.User).filter(models.User.username == username).first()
         if not user:
             log_activity(db, None, "Đăng nhập thất bại", f"Tài khoản '{username}' không tồn tại.", client_ip)
@@ -205,28 +200,32 @@ class AuthService:
         user = db.query(models.User).filter(models.User.username == username).first()
         if not user:
             raise HTTPException(status_code=404, detail="Tài khoản không tồn tại.")
-            
+
         otp = "{:06d}".format(random.randint(0, 999999))
-        
+
         db.query(models.Token).filter(models.Token.user_id == user.id, models.Token.type == 'password_reset').delete()
-        
+
         db_token = models.Token(
             user_id=user.id,
             token=otp,
             type='password_reset',
-            expires_at=datetime.utcnow() + timedelta(minutes=5)
+            expires_at=get_vietnam_now() + timedelta(minutes=5)
         )
         db.add(db_token)
         db.commit()
-        
+
         is_smtp_configured = bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
         if is_smtp_configured:
-            background_tasks.add_task(send_otp_email, user.email, otp)
-            message = "Mã OTP đặt lại mật khẩu đã được gửi về Gmail của tài khoản này."
+            # Gửi email và kiểm tra kết quả
+            email_sent = send_otp_email(user.email, otp)
+            if email_sent:
+                message = "Mã OTP đặt lại mật khẩu đã được gửi về Gmail của tài khoản này."
+            else:
+                message = f"Gửi email thất bại. [Dev Mode] OTP của bạn là: {otp}"
         else:
             print(f"\n[DEVELOPMENT MODE] Forgot Password OTP for {username} ({user.email}) is: {otp}\n")
             message = f"Yêu cầu thành công. [Dev Mode] OTP đặt lại mật khẩu của bạn là: {otp}"
-            
+
         return {
             "status": "success",
             "message": message,
@@ -254,7 +253,7 @@ class AuthService:
         if not token_record:
             raise HTTPException(status_code=400, detail="Mã OTP không chính xác.")
             
-        if datetime.utcnow() > token_record.expires_at:
+        if get_vietnam_now().replace(tzinfo=None) > token_record.expires_at:
             raise HTTPException(status_code=400, detail="Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã mới.")
             
         user.password_hash = hash_password(payload.new_password)
@@ -274,3 +273,27 @@ class AuthService:
         else:
             log_activity(db, None, "Đăng xuất", f"Tài khoản '{username}' (không tồn tại trong DB) đăng xuất.", client_ip)
         return {"status": "success", "message": "Đăng xuất thành công."}
+
+    @staticmethod
+    async def test_email(to_email: str):
+        """Test gửi email OTP — dùng để debug cấu hình SMTP."""
+        is_smtp_configured = bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
+        if not is_smtp_configured:
+            return {
+                "status": "error",
+                "message": "SMTP chưa được cấu hình. Điền SMTP_USER và SMTP_PASSWORD trong file backend/.env",
+                "smtp_user": settings.SMTP_USER or "(trống)",
+                "smtp_server": settings.SMTP_SERVER,
+                "smtp_port": settings.SMTP_PORT,
+            }
+
+        otp = "123456"  # OTP test
+        result = test_smtp_connection(to_email, otp)
+
+        return {
+            "status": "success" if result["ok"] else "error",
+            "message": result["message"],
+            "smtp_user": settings.SMTP_USER,
+            "smtp_server": settings.SMTP_SERVER,
+            "smtp_port": settings.SMTP_PORT,
+        }

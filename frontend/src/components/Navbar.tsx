@@ -23,15 +23,11 @@ export default function Navbar({
   userRole,
   onHistoryClick,
 }: NavbarProps) {
-  const tabs = isLoggedIn
-    ? [
-        { id: 'image-tab', icon: 'fa-regular fa-image', label: 'Nhận diện Ảnh' },
-        { id: 'video-tab', icon: 'fa-regular fa-file-video', label: 'Nhận diện Video' },
-        { id: 'realtime-tab', icon: 'fa-solid fa-camera', label: 'Camera Realtime' },
-      ]
-    : [
-        { id: 'realtime-tab', icon: 'fa-solid fa-camera', label: 'Camera Realtime' },
-      ];
+  const tabs = [
+    { id: 'image-tab', icon: 'fa-regular fa-image', label: 'Nhận diện Ảnh', requireAuth: true },
+    { id: 'video-tab', icon: 'fa-regular fa-file-video', label: 'Nhận diện Video', requireAuth: true },
+    { id: 'realtime-tab', icon: 'fa-solid fa-camera', label: 'Camera Realtime', requireAuth: false },
+  ];
 
   return (
     <header className="navbar">
@@ -50,7 +46,14 @@ export default function Navbar({
           <button
             key={tab.id}
             className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => onTabChange(tab.id)}
+            onClick={() => {
+              if (tab.requireAuth && !isLoggedIn) {
+                onTabChange(tab.id);   // Chuyển tab để hiện RequireLogin
+                onLoginClick();        // Đồng thời mở modal đăng nhập
+              } else {
+                onTabChange(tab.id);
+              }
+            }}
           >
             <i className={tab.icon}></i>
             <span>{tab.label}</span>

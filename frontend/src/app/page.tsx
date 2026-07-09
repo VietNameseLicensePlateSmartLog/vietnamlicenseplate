@@ -11,6 +11,19 @@ import GeneralHistoryModal from '@/components/GeneralHistoryModal';
 
 import { API_BASE } from '@/lib/api';
 
+function RequireLogin({ onLoginClick }: { onLoginClick: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', textAlign: 'center' }}>
+      <i className="fa-solid fa-lock" style={{ fontSize: '3rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}></i>
+      <h2 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Vui lòng đăng nhập</h2>
+      <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Bạn cần đăng nhập để sử dụng tính năng này.</p>
+      <button className="btn btn-primary" onClick={onLoginClick}>
+        <i className="fa-solid fa-right-to-bracket"></i> Đăng nhập ngay
+      </button>
+    </div>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -93,8 +106,8 @@ export default function Home() {
       />
 
       <main className="main-content">
-        {isLoggedIn && activeTab === 'image-tab' && <ImageTab />}
-        {isLoggedIn && activeTab === 'video-tab' && <VideoTab />}
+        {activeTab === 'image-tab' && (isLoggedIn ? <ImageTab /> : <RequireLogin onLoginClick={() => setIsLoginModalOpen(true)} />)}
+        {activeTab === 'video-tab' && (isLoggedIn ? <VideoTab /> : <RequireLogin onLoginClick={() => setIsLoginModalOpen(true)} />)}
         {activeTab === 'realtime-tab' && <RealtimeTab />}
       </main>
 

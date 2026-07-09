@@ -1,8 +1,24 @@
 import os
 import uuid
+from datetime import datetime, timezone, timedelta
 from PIL import Image
 from sqlalchemy.orm import Session
 from src.models import models
+
+# múi giờ Việt Nam UTC+7
+VIETNAM_TZ = timezone(timedelta(hours=7))
+
+def get_vietnam_now() -> datetime:
+    """Trả về thời gian hiện tại theo múi giờ Việt Nam (UTC+7), có timezone info."""
+    return datetime.now(VIETNAM_TZ)
+
+def to_naive_vn(dt: datetime) -> datetime:
+    """Chuyển datetime timezone-aware sang naive theo giờ VN (để so sánh với DB)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(VIETNAM_TZ)
+    return dt.replace(tzinfo=None)
 
 def save_snapshot_image(annotated_img: Image.Image) -> str:
     """Lưu ảnh snapshot vẽ bbox của biển số vào thư mục static và trả về URL tương đối."""
@@ -21,24 +37,25 @@ def cleanup_file(path: str):
         pass
 
 def is_similar_plate(p1: str, p2: str) -> bool:
+    """So sánh 2 biển số bằng tỷ lệ ký tự giống nhau (similarity ratio).
+    Nếu >= 70% ký tự ở cùng vị trí giống nhau → coi là cùng biển số."""
     clean1 = p1.replace("-", "").replace(".", "").replace(" ", "").upper()
     clean2 = p2.replace("-", "").replace(".", "").replace(" ", "").upper()
 
     if clean1 == clean2:
         return True
-    if abs(len(clean1) - len(clean2)) > 1:
+
+    # Lấy chuỗi ngắn hơn làm chuẩn đếm ký tự giống
+    shorter, longer = (clean1, clean2) if len(clean1) <= len(clean2) else (clean2, clean1)
+
+    if len(shorter) == 0:
         return False
 
-    diff_count = 0
-    max_len = max(len(clean1), len(clean2))
-    for i in range(max_len):
-        if i >= len(clean1) or i >= len(clean2):
-            diff_count += 1
-            continue
-        if clean1[i] != clean2[i]:
-            diff_count += 1
-            
-    return diff_count <= 1
+    # Đếm ký tự giống nhau ở cùng vị trí (so với chuỗi ngắn hơn)
+    match_count = sum(1 for i in range(len(shorter)) if shorter[i] == longer[i])
+
+    similarity = match_count / len(shorter)
+    return similarity >= 0.7
 
 def log_activity(db: Session, user_id: int | None, action: str, detail: str = "", ip_address: str = ""):
     """Ghi một dòng nhật ký hoạt động vào cơ sở dữ liệu."""

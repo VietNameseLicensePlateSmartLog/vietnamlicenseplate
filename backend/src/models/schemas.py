@@ -57,3 +57,14 @@ class ResetPasswordRequest(BaseModel):
     username: str
     otp: str
     new_password: str
+
+
+class AdminCreateUser(BaseModel):
+    username: str
+    email: str
+    password: str
+    role: str = "user"
+
+
+class AdminUpdateRole(BaseModel):
+    role: str

@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     WEIGHTS_DIR: str = os.getenv("WEIGHTS_DIR", os.path.join(BASE_DIR, "weights"))
     
+    # Thiết bị xử lý AI: "cuda" (GPU) hoặc "cpu"
+    DEVICE: str = os.getenv("DEVICE", "cuda")
+
     # Cấu hình Threshold
     CONF_S1_IMG: float = 0.6
     CONF_S2_IMG: float = 0.5
@@ -29,8 +32,9 @@ class Settings(BaseSettings):
     )
 
     # Cấu hình SMTP gửi Gmail
-    SMTP_USER: Optional[str] = os.getenv("SMTP_USER", None)
-    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD", None)
+    # Nếu để trống hoặc không set, hệ thống tự fallback về Dev Mode (OTP in console)
+    SMTP_USER: Optional[str] = os.getenv("SMTP_USER", None) or None
+    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD", None) or None
     SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", 587))
 

@@ -2,6 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from src.config.database import get_db
+from src.models import schemas
 from src.controllers.admin_controller import AdminController
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -53,3 +54,15 @@ def admin_regions_stats(db: Session = Depends(get_db)):
 @router.get("/activity-logs")
 def admin_activity_logs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return AdminController.admin_activity_logs(skip, limit, db)
+
+@router.post("/users")
+def admin_create_user(payload: schemas.AdminCreateUser, db: Session = Depends(get_db)):
+    return AdminController.admin_create_user(payload, db)
+
+@router.put("/users/{user_id}/role")
+def admin_update_user_role(user_id: int, payload: schemas.AdminUpdateRole, db: Session = Depends(get_db)):
+    return AdminController.admin_update_user_role(user_id, payload, db)
+
+@router.delete("/users/{user_id}")
+def admin_delete_user(user_id: int, db: Session = Depends(get_db)):
+    return AdminController.admin_delete_user(user_id, db)

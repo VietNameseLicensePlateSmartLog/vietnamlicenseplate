@@ -8,6 +8,7 @@ from src.config.settings import settings
 from src.config.database import engine, Base, SessionLocal
 from src.models import models
 from src.services.ai_pipeline import init_lpr_service
+from src.utils.security import hash_password
 from src.routes import (
     auth_router,
     predict_router,
@@ -20,10 +21,23 @@ from src.routes import (
 async def lifespan(app: FastAPI):
     # Khởi tạo mô hình AI khi khởi chạy app
     init_lpr_service()
-    
+
     # Tạo các bảng cơ sở dữ liệu nếu chưa có
     Base.metadata.create_all(bind=engine)
-    
+
+    # Thêm cột current_frame vào video_jobs nếu chưa có (migration nhẹ cho PostgreSQL)
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text(
+                "DO $$ BEGIN "
+                "ALTER TABLE video_jobs ADD COLUMN current_frame INTEGER DEFAULT 0; "
+                "EXCEPTION WHEN duplicate_column THEN NULL; END $$"
+            ))
+            conn.commit()
+    except Exception:
+        pass  # Cột đã tồn tại
+
     # Seed default regions if empty
     with SessionLocal() as db:
         if db.query(models.Region).count() == 0:
@@ -35,6 +49,34 @@ async def lifespan(app: FastAPI):
             ]
             db.add_all(default_regions)
             db.commit()
+
+    # Seed admin account: abc1 / 123456
+    with SessionLocal() as db:
+        admin_user = db.query(models.User).filter(models.User.username == 'abc1').first()
+        if not admin_user:
+            admin_user = models.User(
+                username='abc1',
+                email='admin@lpr.vn',
+                password_hash=hash_password('123456'),
+                full_name='Admin',
+                role='admin',
+                is_verified=1,
+                is_active=True
+            )
+            db.add(admin_user)
+            db.commit()
+            print("[SEED] ✅ Đã tạo tài khoản admin: abc1 / 123456")
+        else:
+            # Nếu tồn tại nhưng chưa phải admin → upgrade role
+            if admin_user.role != 'admin':
+                admin_user.role = 'admin'
+                admin_user.is_verified = 1
+                admin_user.password_hash = hash_password('123456')
+                db.commit()
+                print("[SEED] ✅ Đã upgrade abc1 thành admin (role + password reset)")
+            else:
+                print("[SEED] ℹ️  Tài khoản admin abc1 đã tồn tại.")
+
     yield
 
 app = FastAPI(

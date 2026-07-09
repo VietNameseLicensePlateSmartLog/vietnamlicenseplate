@@ -79,23 +79,39 @@ export default function RealtimeTab() {
   const currentDetectionsRef = useRef<PlateResult[]>([]);
   const sentFrameSizeRef = useRef({ width: 640, height: 480 });
   const drawLoopActiveRef = useRef(false);
+  const sendSingleFrameRef = useRef<() => void>(() => {});
 
   // Lắng nghe kết quả nhận dạng từ WebSocket
-  const handleResults = useCallback((results: PlateResult[]) => {
-    currentDetectionsRef.current = results;
+  // results = finalized plates (đã lưu DB, hiển thị history)
+  // activePlates = các biển đang track (hiển thị live bbox)
+  const handleResults = useCallback((results: PlateResult[], activePlates?: PlateResult[]) => {
+    // Dùng activePlates cho live bbox (nếu có), nếu không thì dùng results
+    const displayPlates = activePlates && activePlates.length > 0 ? activePlates : results;
+    currentDetectionsRef.current = displayPlates;
     processRealtimeDetections(results);
+    // Gửi frame tiếp theo sau ~200ms → target ~4 FPS
+    if (isStreamingRef.current) {
+      setTimeout(sendSingleFrameRef.current, 200);
+    }
   }, []);
 
   const handleFirstResult = useCallback(() => {
     setShowPlaceholder(false);
   }, []);
 
+  // Khi WebSocket kết nối thành công, bắt đầu gửi frame
+  const handleConnected = useCallback(() => {
+    console.log('WebSocket connected, bắt đầu gửi frame');
+    sendSingleFrameRef.current();
+  }, []);
+
   const { connect, disconnect, sendFrame } = useWebSocket({
     onResults: handleResults,
     onFirstResult: handleFirstResult,
+    onConnected: handleConnected,
   });
 
-  // Load cameras khi component mount — không yêu cầu quyền ngay lập tức
+  // Load cameras khi component mount — tự động xin quyền nếu chưa có
   useEffect(() => {
     loadCameras();
     loadRegions();
@@ -118,18 +134,28 @@ export default function RealtimeTab() {
 
   async function loadCameras() {
     try {
-      // Thử liệt kê thiết bị mà KHÔNG yêu cầu quyền camera
-      // Nếu quyền đã được cấp trước đó, sẽ có nhãn thiết bị
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+      // Bước1: Thử enumerate không xin quyền
+      let devices = await navigator.mediaDevices.enumerateDevices();
+      let videoDevices = devices.filter((d) => d.kind === 'videoinput');
 
-      if (videoDevices.length > 0) {
-        setCameras(videoDevices);
-        if (!selectedDeviceId) {
-          setSelectedDeviceId(videoDevices[0].deviceId);
+      // Bước2: Nếu chưa có quyền (label rỗng), xin quyền camera
+      const needsPermission = videoDevices.length === 0 || videoDevices.every(d => !d.label);
+      if (needsPermission) {
+        try {
+          const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          // Thành công → tắt ngay, enumerate lại để lấy label
+          tempStream.getTracks().forEach(t => t.stop());
+          devices = await navigator.mediaDevices.enumerateDevices();
+          videoDevices = devices.filter((d) => d.kind === 'videoinput');
+        } catch (permErr) {
+          console.warn('User từ chối quyền camera:', permErr);
         }
       }
-      // Nếu không tìm thấy camera ở đây, quyền sẽ được yêu cầu khi nhấn "Bắt đầu Camera"
+
+      setCameras(videoDevices);
+      if (videoDevices.length > 0 && !selectedDeviceId) {
+        setSelectedDeviceId(videoDevices[0].deviceId);
+      }
     } catch (err) {
       console.warn('Không thể liệt kê thiết bị camera:', err);
     }
@@ -230,6 +256,9 @@ export default function RealtimeTab() {
     sendFrame(base64Data, 0.5, 0.5, 0.3, rId);
   }, [sendFrame]);
 
+  // Sync ref để handleResults/handleConnected có thể gọi qua ref
+  sendSingleFrameRef.current = sendSingleFrame;
+
   // Tạo ảnh chụp snapshot có vẽ khung nhận diện chính xác với frame hình gửi đi
   const getAnnotatedSnapshot = useCallback((results: PlateResult[]) => {
     const canvas = hiddenCanvasRef.current;
@@ -275,8 +304,8 @@ export default function RealtimeTab() {
     return dataUrl;
   }, []);
 
-  // Xử lý logic theo dõi biển số
-  function processRealtimeDetections(results: PlateResult[]) {
+  // Xử lý logic theo dõi biển số (stable vì chỉ đọc refs)
+  const processRealtimeDetections = useCallback((results: PlateResult[]) => {
     const now = Date.now();
     const activePlates = activePlatesRef.current;
 
@@ -325,10 +354,19 @@ export default function RealtimeTab() {
         delete activePlates[text];
       }
     }
-  }
+  }, []);
 
   // Bắt đầu camera
   async function startCamera() {
+    // Nếu chưa có camera nào, thử load lại
+    if (cameras.length === 0) {
+      await loadCameras();
+      if (cameras.length === 0) {
+        alert('Không tìm thấy camera nào.\n\nKiểm tra:\n1. Camera đã kết nối chưa?\n2. Đã cho phép quyền camera ở thanh địa chỉ?\n3. Không có app nào khác đang dùng camera?');
+        return;
+      }
+    }
+
     const constraints = {
       video: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true,
     };
@@ -357,35 +395,21 @@ export default function RealtimeTab() {
       setIsStreaming(true);
       isStreamingRef.current = true;
 
-      // Connect WebSocket - khi nhận kết quả đầu tiên, onMessage sẽ gửi frame tiếp theo
-      const ws = connect();
-
-      ws.onopen = () => {
-        console.log('Mở cổng WebSocket thành công.');
-        sendSingleFrame();
-      };
-
-      // Override onmessage để thêm logic gửi frame tiếp theo
-      const originalOnMessage = ws.onmessage;
-      ws.onmessage = (event) => {
-        if (originalOnMessage) {
-          originalOnMessage.call(ws, event);
-        }
-        // Gửi frame tiếp theo sau khi nhận phản hồi
-        if (isStreamingRef.current) {
-          setTimeout(sendSingleFrame, 50);
-        }
-      };
+      // Connect WebSocket - hook sẽ gọi onConnected khi mở thành công,
+      // rồi onResults sẽ tự chain frame tiếp theo
+      connect();
 
       startLocalDrawingLoop();
     } catch (err) {
       const error = err as Error;
       if (error.name === 'NotAllowedError') {
-        alert('Bạn cần cấp quyền truy cập camera để sử dụng tính năng này.\nVui lòng cho phép camera trong cài đặt trình duyệt và thử lại.');
+        alert('Bạn cần cấp quyền truy cập camera.\n\nCách sửa:\n- Nhấn icon camera 🔒 trên thanh địa chỉ\n- Chọn "Cho phép"\n- Thử lại');
       } else if (error.name === 'NotFoundError') {
-        alert('Không tìm thấy thiết bị camera nào. Vui lòng kết nối camera và thử lại.');
+        alert('Không tìm thấy camera nào.\n\nKiểm tra:\n1. Camera đã kết nối chưa?\n2. Driver camera đã cài đúng?\n3. Không có app nào khác đang chiếm camera?');
+      } else if (error.name === 'NotReadableError') {
+        alert('Camera đang bị chiếm bởi ứng dụng khác.\n\nĐóng các app đang dùng camera (Zoom, Teams, OBS...) rồi thử lại.');
       } else {
-        alert('Không thể khởi chạy camera: ' + error.message);
+        alert('Lỗi camera: ' + error.name + '\n' + error.message);
       }
     }
   }

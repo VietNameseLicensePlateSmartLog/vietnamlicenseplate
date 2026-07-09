@@ -74,6 +74,7 @@ class VideoJob(Base):
     total_frames = Column(Integer, nullable=True)
     status = Column(String(20), nullable=False, default='pending')
     progress = Column(SmallInteger, nullable=True, default=0)
+    current_frame = Column(Integer, nullable=True, default=0)
     error_message = Column(Text, nullable=True)
     output_csv = Column(String(500), nullable=True)
     output_xlsx = Column(String(500), nullable=True)

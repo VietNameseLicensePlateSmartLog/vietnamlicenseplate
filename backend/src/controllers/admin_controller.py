@@ -1,5 +1,6 @@
 from typing import Optional
 from sqlalchemy.orm import Session
+from src.models import schemas
 from src.services.admin_service import AdminService
 
 class AdminController:
@@ -44,3 +45,15 @@ class AdminController:
     @staticmethod
     def admin_activity_logs(skip: int, limit: int, db: Session):
         return AdminService.admin_activity_logs(skip, limit, db)
+
+    @staticmethod
+    def admin_create_user(payload: schemas.AdminCreateUser, db: Session):
+        return AdminService.admin_create_user(payload.username, payload.email, payload.password, payload.role, db)
+
+    @staticmethod
+    def admin_update_user_role(user_id: int, payload: schemas.AdminUpdateRole, db: Session):
+        return AdminService.admin_update_user_role(user_id, payload.role, db)
+
+    @staticmethod
+    def admin_delete_user(user_id: int, db: Session):
+        return AdminService.admin_delete_user(user_id, db)

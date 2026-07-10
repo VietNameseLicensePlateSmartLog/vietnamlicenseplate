@@ -66,3 +66,7 @@ def admin_update_user_role(user_id: int, payload: schemas.AdminUpdateRole, db: S
 @router.delete("/users/{user_id}")
 def admin_delete_user(user_id: int, db: Session = Depends(get_db)):
     return AdminController.admin_delete_user(user_id, db)
+
+@router.delete("/detections/{detection_id}")
+def admin_delete_detection(detection_id: int, db: Session = Depends(get_db)):
+    return AdminController.admin_delete_detection(detection_id, db)

@@ -217,7 +217,7 @@ export default function ImageTab() {
                             <td><strong>{idx + 1}</strong></td>
                             <td><span className="badge badge-code">[{plate.bbox.join(', ')}]</span></td>
                             <td><span className="badge badge-text">{plate.text}</span></td>
-                            <td><span className="badge badge-conf">{Math.round(plate.conf * 100)}%</span></td>
+                            <td><span className="badge badge-conf">{(plate.conf * 100).toFixed(2)}%</span></td>
                           </tr>
                         ))
                       ) : (

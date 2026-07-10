@@ -10,7 +10,7 @@ from collections import defaultdict
 from src.services.validation import get_plate_format_score
 
 
-MISS_THRESHOLD = 8        # Sau 8 frame mất tín hiệu → finalize (~4s ở 2 FPS)
+MISS_THRESHOLD = 4        # Sau 4 frame mất tín hiệu → finalize (~2s ở 2 FPS)
 MIN_HITS = 2              # Tối thiểu 2 hit trước khi finalize (chống fake)
 CENTROID_DISTANCE = 100   # Ngưỡng khoảng cách Euclid (backup khi IOU thấp)
 IOU_THRESHOLD = 0.3       # Ngưỡng IOU tối thiểu để match
@@ -194,6 +194,13 @@ class PlateTrack:
         self.first_frame = 0    # frame index khi detect lần đầu
         self.last_frame = 0     # frame index khi detect lần cuối
 
+        # Frame tốt nhất — lưu frame có confidence cao nhất
+        self.best_frame_img = None   # PIL.Image
+        self.best_frame_conf = 0.0   # confidence của frame tốt nhất
+
+        # Frame đầu tiên — lưu frame khi detect lần đầu (dùng cho snapshot verification)
+        self.first_frame_img = None  # PIL.Image
+
         # Character voting: {position: {char: vote_count}}
         self.char_votes = defaultdict(lambda: defaultdict(int))
         # Character confidences: {position: {char: sum_of_confs}}
@@ -207,8 +214,11 @@ class PlateTrack:
             if char_confs and i < len(char_confs):
                 self.char_confs[i][ch] += char_confs[i]
 
-    def update(self, centroid: tuple, plate_text: str, char_confs: list = None, bbox: list = None, frame_idx: int = 0):
-        """Cập nhật track với detection mới."""
+    def update(self, centroid: tuple, plate_text: str, char_confs: list = None,
+               bbox: list = None, frame_idx: int = 0, plate_conf: float = 0.0, frame_img=None):
+        """Cập nhật track với detection mới.
+        plate_conf: confidence của detection hiện tại (dùng để chọn frame tốt nhất).
+        frame_img: PIL.Image frame hiện tại (lưu nếu có conf cao nhất)."""
         self.centroid = centroid
         self.miss_count = 0
         self.hit_count += 1
@@ -216,6 +226,15 @@ class PlateTrack:
         self.last_frame = frame_idx
         if bbox:
             self.last_bbox = bbox
+
+        # Lưu frame đầu tiên (dùng cho snapshot verification)
+        if self.first_frame_img is None and frame_img is not None:
+            self.first_frame_img = frame_img
+
+        # Lưu frame tốt nhất (confidence cao nhất)
+        if frame_img is not None and plate_conf > self.best_frame_conf:
+            self.best_frame_conf = plate_conf
+            self.best_frame_img = frame_img
 
         for i, ch in enumerate(plate_text):
             self.char_votes[i][ch] += 1
@@ -284,10 +303,11 @@ class CentroidTracker:
 
         return False
 
-    def update(self, detections: list, frame_idx: int = 0) -> list:
+    def update(self, detections: list, frame_idx: int = 0, frame_img=None) -> list:
         """Cập nhật tracker với danh sách detection mới.
         detections: [{'bbox': [x1,y1,x2,y2], 'text': str, 'conf': float}]
         frame_idx: index frame hiện tại (dùng cho track frame range)
+        frame_img: PIL.Image frame hiện tại (lưu vào track để chọn frame tốt nhất)
         Trả về danh sách tracks đã merge (sẵn sàng lưu DB)."""
         finalized = []
         self._cleanup_buffer()
@@ -355,7 +375,9 @@ class CentroidTracker:
                     det_cent, det_info['text'],
                     char_confs=det_info.get('char_confs'),
                     bbox=det_info.get('bbox'),
-                    frame_idx=frame_idx
+                    frame_idx=frame_idx,
+                    plate_conf=det_info.get('conf', 0.0),
+                    frame_img=frame_img
                 )
                 matched_det.add(det_idx)
                 matched_track.add(best_track_id)
@@ -370,6 +392,9 @@ class CentroidTracker:
                 )
                 track.first_frame = frame_idx
                 track.last_frame = frame_idx
+                # Lưu frame tốt nhất cho track mới
+                track.best_frame_conf = det_info.get('conf', 0.0)
+                track.best_frame_img = frame_img
                 self.tracks[self.next_id] = track
                 self.next_id += 1
 
@@ -392,7 +417,9 @@ class CentroidTracker:
                         final_text, final_conf, alt_text, alt_conf,
                         track.char_votes, track.char_confs,
                         track.last_bbox, track.hit_count,
-                        track.first_frame, track.last_frame
+                        track.first_frame, track.last_frame,
+                        track.first_frame_img,
+                        track.best_frame_img, track.best_frame_conf
                     )
                     if merged:
                         finalized.append(merged)
@@ -432,7 +459,9 @@ class CentroidTracker:
 
     def _merge_into_buffer(self, text, conf, alt_text, alt_conf,
                            char_votes, char_confs, bbox, hit_count,
-                           first_frame, last_frame) -> dict:
+                           first_frame, last_frame,
+                           first_frame_img=None,
+                           best_frame_img=None, best_frame_conf=0.0) -> dict:
         """Gộp track mới vào merge buffer. Nếu text trùng → combine votes.
         Nếu fuzzy match (edit_distance ≤ 1, gap ≤ 2s) → combine.
         Trả về dict kết quả nếu là lần merge đầu tiên (mới), None nếu đã có sẵn."""
@@ -456,6 +485,11 @@ class CentroidTracker:
             buf['timestamp'] = min(buf['timestamp'], now)
             # Cập nhật bbox mới nhất
             buf['bbox'] = bbox
+            # Giữ frame tốt nhất (conf cao nhất)
+            if best_frame_conf > buf.get('best_frame_conf', 0):
+                buf['best_frame_img'] = best_frame_img
+                buf['best_frame_conf'] = best_frame_conf
+            # KHÔNG cập nhật first_frame_img — giữ frame đầu tiên của entry cũ
             return None  # Đã merge, chưa flush
 
         # Fuzzy merge: edit_distance ≤ 1 + gap ≤ 2s
@@ -482,6 +516,11 @@ class CentroidTracker:
                         buf['last_frame'] = max(buf['last_frame'], last_frame)
                         buf['timestamp'] = min(buf['timestamp'], now)
                         buf['bbox'] = bbox
+                        # Giữ frame tốt nhất (conf cao nhất)
+                        if best_frame_conf > buf.get('best_frame_conf', 0):
+                            buf['best_frame_img'] = best_frame_img
+                            buf['best_frame_conf'] = best_frame_conf
+                        # KHÔNG cập nhật first_frame_img — giữ frame đầu tiên
                         return None  # Đã merge
 
         # Không match → tạo entry mới trong buffer
@@ -494,6 +533,9 @@ class CentroidTracker:
             'last_frame': last_frame,
             'timestamp': now,
             'total_hits': hit_count,
+            'first_frame_img': first_frame_img,
+            'best_frame_img': best_frame_img,
+            'best_frame_conf': best_frame_conf,
         }
         return {
             'text': text,
@@ -506,6 +548,8 @@ class CentroidTracker:
             'total_frames': hit_count,
             'frame_start': first_frame,
             'frame_end': last_frame,
+            'first_frame_img': first_frame_img,
+            'best_frame_img': best_frame_img,
         }
 
     def _cleanup_merge_buffer(self):
@@ -536,6 +580,8 @@ class CentroidTracker:
                 'total_frames': buf['total_hits'],
                 'frame_start': buf['first_frame'],
                 'frame_end': buf['last_frame'],
+                'first_frame_img': buf.get('first_frame_img'),
+                'best_frame_img': buf.get('best_frame_img'),
             })
         self._merge_buffer.clear()
         return results

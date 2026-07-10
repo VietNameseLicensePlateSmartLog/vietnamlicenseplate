@@ -178,9 +178,25 @@ class AuthService:
         if not verify_password(password, user.password_hash):
             log_activity(db, user.id, "Đăng nhập thất bại", f"Tài khoản '{username}' nhập sai mật khẩu.", client_ip)
             raise HTTPException(status_code=400, detail="Tài khoản hoặc mật khẩu không chính xác.")
-        
-        log_activity(db, user.id, "Đăng nhập", f"Tài khoản '{username}' đăng nhập thành công (role: {user.role}).", client_ip)
-        
+
+        # Chỉ ghi log đăng nhập khi:
+        #   - Lần đầu đăng nhập (last_login_at chưa có), HOẶC
+        #   - Đã đăng xuất trước đó (last_logout_at > last_login_at)
+        should_log = (
+            user.last_login_at is None
+            or (
+                user.last_logout_at is not None
+                and user.last_login_at is not None
+                and user.last_logout_at > user.last_login_at
+            )
+        )
+
+        user.last_login_at = get_vietnam_now().replace(tzinfo=None)
+        db.commit()
+
+        if should_log:
+            log_activity(db, user.id, "Đăng nhập", f"Tài khoản '{username}' đăng nhập thành công (role: {user.role}).", client_ip)
+
         return {
             "status": "success",
             "message": "Đăng nhập thành công.",
@@ -255,7 +271,11 @@ class AuthService:
             
         if get_vietnam_now().replace(tzinfo=None) > token_record.expires_at:
             raise HTTPException(status_code=400, detail="Mã OTP đã hết hạn. Vui lòng yêu cầu gửi lại mã mới.")
-            
+
+        # Kiểm tra mật khẩu mới không được trùng mật khẩu cũ
+        if verify_password(payload.new_password, user.password_hash):
+            raise HTTPException(status_code=400, detail="Mật khẩu mới không được trùng mật khẩu cũ.")
+
         user.password_hash = hash_password(payload.new_password)
         token_record.is_used = True
         user.is_verified = 1
@@ -269,6 +289,8 @@ class AuthService:
         user = db.query(models.User).filter(models.User.username == username).first()
         client_ip = request.client.host if request.client else ""
         if user:
+            user.last_logout_at = get_vietnam_now().replace(tzinfo=None)
+            db.commit()
             log_activity(db, user.id, "Đăng xuất", f"Tài khoản '{username}' đăng xuất thành công.", client_ip)
         else:
             log_activity(db, None, "Đăng xuất", f"Tài khoản '{username}' (không tồn tại trong DB) đăng xuất.", client_ip)

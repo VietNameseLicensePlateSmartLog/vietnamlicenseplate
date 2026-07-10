@@ -6,7 +6,7 @@ import { formatVnTime } from '@/lib/utils';
 
 interface ActivityLog {
   id: number;
-  user_id: number;
+  user_email: string | null;
   action: string;
   detail: string;
   ip_address: string | null;
@@ -69,8 +69,7 @@ export default function ActivityLog() {
           <table style={{ minWidth: '800px' }}>
             <thead>
               <tr>
-                <th style={{ width: '80px' }}>ID Log</th>
-                <th style={{ width: '120px' }}>ID User</th>
+                <th style={{ width: '200px' }}>Email</th>
                 <th style={{ width: '200px' }}>Hành động</th>
                 <th>Chi tiết sự kiện</th>
                 <th style={{ width: '150px' }}>Địa chỉ IP</th>
@@ -80,14 +79,14 @@ export default function ActivityLog() {
             <tbody>
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.4)' }}>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.4)' }}>
                     Không có nhật ký hoạt động nào
                   </td>
                 </tr>
               ) : (
                 logs.map(log => {
                   const formattedTime = formatVnTime(log.created_at);
-                  
+
                   // Phân biệt màu sắc dựa trên hành động
                   let actionColor = '#fff';
                   if (log.action.toLowerCase().includes('login') || log.action.toLowerCase().includes('đăng nhập')) {
@@ -100,10 +99,9 @@ export default function ActivityLog() {
 
                   return (
                     <tr key={log.id}>
-                      <td style={{ color: 'rgba(255,255,255,0.4)' }}>#{log.id}</td>
                       <td>
                         <span style={{ fontWeight: 600 }}>
-                          {log.user_id === 0 ? 'Admin' : `User #${log.user_id}`}
+                          {log.user_email || 'Hệ thống'}
                         </span>
                       </td>
                       <td>

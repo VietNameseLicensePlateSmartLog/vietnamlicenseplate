@@ -38,7 +38,7 @@ export default function SnapshotModal({
             </div>
             <div>
               <span className="modal-label">Độ tin cậy lớn nhất:</span>
-              <span className="badge badge-conf">{Math.round(confidence * 100)}%</span>
+              <span className="badge badge-conf">{(confidence * 100).toFixed(2)}%</span>
             </div>
           </div>
           <div className="modal-image-container">

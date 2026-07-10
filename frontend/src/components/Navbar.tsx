@@ -111,9 +111,9 @@ export default function Navbar({
             </button>
           </div>
         ) : (
-          <button className="btn btn-primary btn-sm" onClick={onLoginClick}>
+          <Link href="/login" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
             <i className="fa-solid fa-right-to-bracket"></i> Đăng nhập
-          </button>
+          </Link>
         )}
       </div>
     </header>

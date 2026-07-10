@@ -57,7 +57,7 @@ Hệ thống được xây dựng theo mô hình **MVC** ở backend và **Next.
 │  │  Stage 1: Phát hiện biển số                         │ │
 │  │  → Deskew + Pad + Preprocess                        │ │
 │  │  → Stage 2: Phát hiện ký tự                         │ │
-│  │  → Stage 3: Phân loại ký tự (Dual Classification)  │ │
+│  │  → Stage 3: Phân loại ký tự (Character Classification)  │ │
 │  └──────────────────────┬──────────────────────────────┘ │
 │                         │                                 │
 │  ┌──────────────────────┴──────────────────────────────┐ │
@@ -100,44 +100,46 @@ Hệ thống được xây dựng theo mô hình **MVC** ở backend và **Next.
 
 ## Tính năng chính
 
-### Nhan diện thời gian thực (Realtime)
+### Nhận diện thời gian thực (Realtime)
 - Kết nối webcam qua **WebSocket** — hiển thị kết quả nhận diện ngay lập tức
 - **Centroid Tracking + Character Voting**: theo dõi biển số qua các frame, vote ký tự để tăng độ chính xác
-- Bounding box thật được lưu vào snapshot khi track đã ổn định
-- Tự động lưu kết quả vào database
+- **Snapshot frame đầu tiên**: khi track finalize, hệ thống dùng frame đầu tiên của track làm ảnh verification
+- **Confidence từ voting**: độ tin cậy được tính bằng Geometric Mean từ character voting khi track finalize
+- Tự động lưu kết quả vào database khi biển số biến mất (track finalize)
 
-### Nhan diện từ ảnh
+### Nhận diện từ ảnh
 - Upload ảnh (JPG, PNG, BMP, WebP) để nhận diện
 - Hiển thị bounding box, text và confidence score
 - Lưu kết quả vào lịch sử
 
-### Nhan diện từ video
+### Nhận diện từ video
 - Upload video (MP4, AVI, MOV, MKV) — xử lý nền (background thread)
 - **Centroid Tracking + Character Voting** cho video (xử lý ~2 FPS)
-- Snapshot video dùng bounding box thật từ track
+- Snapshot video dùng frame đầu tiên của track làm ảnh verification
 - Theo dõi tiến trình xử lý real-time qua polling
 - Tải video kết quả đã annotate
 
-### Quan ly nguoi dung & Xac thuc
-- Đăng ký, đăng nhập, đăng xuất
-- **Xác thực OTP qua Gmail** (hỗ trợ App Password SMTP)
-- Chế độ Development: OTP in ra console khi chưa cấu hình SMTP
+### Quản lý người dùng & Xác thực
+- Đăng ký独立 tại `/signin`, đăng nhập tại `/login`
+- **Xác thực OTP qua Gmail** (SMTP đã cấu hình sẵn)
+- Chế độ Development: OTP in ra console khi SMTP chưa khả dụng
 - Phân quyền Admin / User
-- Quên mật khẩu → OTP → Đặt lại mật khẩu
+- Quên mật khẩu → OTP → Đặt lại mật khẩu (mật khẩu mới không được trùng mật khẩu cũ)
 
-### Phan vung camera (Region)
-- CRUD phân vùng camera (tên, vị trí, trạng thái active/inactive)
+### Phân vùng camera (Region)
+- Xem danh sách phân vùng camera
 - Gán region khi nhận diện để thống kê theo khu vực
 
-### Dashboard quan tri (Admin)
+### Dashboard quản trị (Admin)
 - Thống kê tổng quan: tổng lần nhận diện, người dùng, phân vùng, video
 - Biểu đồ nhận diện theo ngày (7 ngày gần nhất)
 - Biểu đồ tỷ lệ theo loại nguồn (camera / ảnh / video)
 - Thống kê biến thiên confidence theo khu vực
-- Quản lý người dùng, phân vùng, nhật ký hoạt động
-- Xác minh kết quả nhận diện (đúng/sai)
+- Quản lý người dùng (tạo, sửa role, kích hoạt/vô hiệu hóa, xóa)
+- Xác minh kết quả nhận diện: nút **Đúng** / **Sai** / **Xóa** (xóa detection khỏi database)
+- Nhật ký hoạt động (hiển thị email người thực hiện)
 
-### Lich su nhan diện
+### Lịch sử nhận diện
 - Xem lịch sử nhận diện với bộ lọc theo biển số, nguồn, thời gian, khu vực
 - Xem chi tiết snapshot với bounding box
 - Phân trang
@@ -171,10 +173,10 @@ vietnamlicenseplate/
 │       │   └── schemas.py          # Pydantic schemas (request/response)
 │       ├── routes/
 │       │   ├── auth.py             # /auth/* — đăng ký, đăng nhập, OTP
-│       │   ├── predict.py          # /predict/* — ảnh, video, WebSocket
+│       │   ├── predict.py          # /predict-*, /tasks/*, /ws/lpr
 │       │   ├── admin.py            # /admin/* — dashboard, thống kê
-│       │   ├── regions.py          # /regions/* — CRUD phân vùng
-│       │   └── history.py          # /history/* — lịch sử nhận diện
+│       │   ├── regions.py          # /regions — danh sách phân vùng
+│       │   └── history.py          # /history — lịch sử nhận diện
 │       ├── controllers/
 │       │   ├── auth_controller.py
 │       │   ├── predict_controller.py
@@ -189,7 +191,7 @@ vietnamlicenseplate/
 │       │   ├── predict_service.py  # Xử lý ảnh/video/WebSocket
 │       │   ├── auth_service.py     # Xác thực, JWT, OTP, phân quyền
 │       │   ├── admin_service.py    # Thống kê, quản lý user/region
-│       │   ├── region_service.py   # CRUD region
+│       │   ├── region_service.py   # Truy vấn region
 │       │   └── history_service.py  # Truy vấn lịch sử
 │       └── utils/
 │           ├── security.py         # PBKDF2 password hashing
@@ -202,7 +204,10 @@ vietnamlicenseplate/
 │   └── src/
 │       ├── app/
 │       │   ├── layout.tsx          # Root layout (font, globals.css)
-│       │   ├── page.tsx            # Trang chủ — Tab Image/Video/Realtime
+│       │   ├── page.tsx            # Root → redirect /login
+│       │   ├── login/page.tsx      # Trang đăng nhập standalone
+│       │   ├── signin/page.tsx     # Trang đăng ký独立 (embedded LoginModal)
+│       │   ├── home/page.tsx       # Trang chủ — Tab Image/Video/Realtime
 │       │   └── admin/              # 7 trang quản trị
 │       │       ├── layout.tsx      # Layout admin (Sidebar + TopBar)
 │       │       ├── dashboard/
@@ -215,6 +220,8 @@ vietnamlicenseplate/
 │       ├── components/
 │       │   ├── Navbar.tsx          # Thanh điều hướng chính
 │       │   ├── LoginModal.tsx      # Modal 5 chế độ (login/register/OTP/forgot/reset)
+                                      # Hỗ trợ embedded mode cho /signin
+│       │   ├── AnimatedBackground.tsx # Hiệu ứng nền animation
 │       │   ├── ImageTab.tsx        # Tab nhận diện ảnh
 │       │   ├── VideoTab.tsx        # Tab nhận diện video
 │       │   ├── RealtimeTab.tsx     # Tab nhận diện thời gian thực
@@ -226,7 +233,8 @@ vietnamlicenseplate/
 │       ├── hooks/
 │       │   └── useWebSocket.ts     # Hook WebSocket kết nối backend
 │       ├── lib/
-│       │   └── api.ts             # API_BASE, BACKEND_URL, WS_URL
+│       │   ├── api.ts             # API_BASE, BACKEND_URL, WS_URL
+│       │   └── utils.ts           # parseVnDatetime, formatVnTime
 │       └── styles/
 │           └── admin.css
 ```
@@ -313,13 +321,15 @@ npm install
 DATABASE_URL=postgresql://postgres:password@localhost:5432/Web_orc
 
 # ===== SMTP Configuration (Gmail) =====
-# Hướng dẫn: Tạo App Password tại https://myaccount.google.com/apppasswords
-# Nếu để trống, OTP sẽ in ra console (chế độ Development)
-SMTP_USER=your-email@gmail.com
+# SMTP đã cấu hình sẵn — OTP gửi về email thật
+SMTP_USER=vietc3k49@gmail.com
 SMTP_PASSWORD=your-16-char-app-password
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 ```
+
+> **Lưu ý**: `SMTP_PASSWORD` là App Password (16 ký tự), **KHÔNG PHẢI** mật khẩu Gmail thông thường.
+> Nếu muốn dùng email khác, thay `SMTP_USER` và tạo App Password mới.
 
 #### Hướng dẫn cấu hình SMTP Gmail
 
@@ -398,8 +408,10 @@ npm run dev
 
 | Trang | URL | Ghi chú |
 |---|---|---|
-| Trang chủ | http://localhost:3000 | Realtime webcam (không cần đăng nhập) |
-| Đăng nhập | Nhấn nút "Đăng nhập" trên Navbar | |
+| Mặc định | http://localhost:3000 | Tự redirect → `/login` |
+| Đăng nhập | http://localhost:3000/login | Form đăng nhập |
+| Đăng ký | http://localhost:3000/signin | Form đăng ký独立, gửi OTP qua Gmail |
+| Trang chủ | http://localhost:3000/home | Realtime webcam, Image, Video |
 | Khu vực Admin | http://localhost:3000/admin | Cần đăng nhập với role `admin` |
 
 ---
@@ -414,48 +426,51 @@ Tất cả API nằm dưới tiền tố `/api/v1`.
 |---|---|---|
 | POST | `/auth/register` | Đăng ký tài khoản → gửi OTP qua Gmail |
 | POST | `/auth/verify-otp` | Xác thực OTP kích hoạt tài khoản |
-| POST | `/auth/resend-otp` | Gửi lại mã OTP |
 | POST | `/auth/login` | Đăng nhập (cần tài khoản đã xác thực OTP) |
 | POST | `/auth/forgot-password` | Gửi OTP khôi phục mật khẩu |
-| POST | `/auth/reset-password` | Đặt lại mật khẩu bằng OTP |
+| POST | `/auth/reset-password` | Đặt lại mật khẩu bằng OTP (mật khẩu mới ≠ cũ) |
 | POST | `/auth/logout` | Đăng xuất |
+| GET | `/auth/test-email` | Test kết nối SMTP Gmail |
 
-### Nhận diện (`/api/v1/predict`)
+### Nhận diện (`/api/v1`)
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| POST | `/predict/image` | Upload ảnh để nhận diện |
-| POST | `/predict/video` | Upload video để nhận diện (xử lý nền) |
-| GET | `/predict/video/{task_id}/status` | Kiểm tra tiến trình video |
-| GET | `/predict/video/{task_id}/download` | Tải video kết quả |
+| POST | `/predict-image` | Upload ảnh để nhận diện |
+| POST | `/predict-video` | Upload video để nhận diện (xử lý nền) |
+| GET | `/tasks/{task_id}` | Kiểm tra tiến trình video |
+| GET | `/tasks/{task_id}/download` | Tải video kết quả |
 | WS | `/ws/lpr` | WebSocket nhận diện thời gian thực |
 
 ### Quản trị (`/api/v1/admin`)
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| GET | `/admin/dashboard` | Thống kê tổng quan |
+| GET | `/admin/stats` | Thống kê tổng quan |
 | GET | `/admin/users` | Danh sách người dùng |
-| PUT | `/admin/users/{id}` | Cập nhật người dùng |
-| DELETE | `/admin/users/{id}` | Xóa người dùng |
-| GET | `/admin/unverified` | Danh sách chưa xác minh |
-| POST | `/admin/verify` | Xác minh kết quả nhận diện |
-| GET | `/admin/activity-log` | Nhật ký hoạt động |
+| POST | `/admin/users` | Tạo tài khoản mới |
+| PUT | `/admin/users/{user_id}/role` | Cập nhật role người dùng |
+| POST | `/admin/users/{user_id}/toggle-active` | Kích hoạt / vô hiệu hóa tài khoản |
+| DELETE | `/admin/users/{user_id}` | Xóa người dùng |
+| GET | `/admin/detections/unverified` | Danh sách chưa xác minh |
+| POST | `/admin/verify-detection` | Xác minh kết quả nhận diện (đúng/sai) |
+| DELETE | `/admin/detections/{detection_id}` | Xóa bản ghi nhận diện |
+| GET | `/admin/detections/search` | Tìm kiếm detections |
+| GET | `/admin/regions-stats` | Thống kê theo khu vực |
+| GET | `/admin/activity-logs` | Nhật ký hoạt động |
 
-### Phân vùng (`/api/v1/regions`)
+### Phân vùng (`/api/v1`)
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| GET | `/regions` | Danh sách phân vùng |
-| POST | `/regions` | Tạo phân vùng mới |
-| PUT | `/regions/{id}` | Cập nhật phân vùng |
-| DELETE | `/regions/{id}` | Xóa phân vùng |
+| GET | `/regions` | Danh sách phân vùng camera |
 
-### Lịch sử (`/api/v1/history`)
+### Lịch sử (`/api/v1`)
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
 | GET | `/history` | Lịch sử nhận diện (hỗ trợ filter & pagination) |
+| DELETE | `/history/{detection_id}` | Xóa bản ghi nhận diện |
 
 ---
 
@@ -478,8 +493,7 @@ Hệ thống sử dụng kiến trúc **3 giai đoạn (3-Stage Pipeline)** dự
 │  Deskew + Pad + Preprocess       │
 │  - OTSU → minAreaRect → xoay    │
 │  - Pad +8px                      │
-│  - Grayscale, autocontrast,      │
-│    sharpen, auto-invert          │
+│  - Grayscale, sharpen            │
 └──────────────┬───────────────────┘
                │
                ▼
@@ -493,11 +507,11 @@ Hệ thống sử dụng kiến trúc **3 giai đoạn (3-Stage Pipeline)** dự
                │ Cắt từng ký tự → Resize 64×64
                ▼
 ┌──────────────────────────────────┐
-│  STAGE 3: Dual Classification    │  YOLOv8 Classification
+│  STAGE 3: Character Classification │  YOLOv8 Classification
 │  Model: stage3_char_classify     │  Input: ảnh ký tự 64×64
-│  - Chạy trên ảnh GỐC            │  Confidence: 0.3 / 0.7
-│  - Chạy trên ảnh THRESHOLD      │
-│  - Chọn kết quả conf cao hơn    │
+│  - Phân loại trên ảnh GỐC       │  Confidence: 0.3 / 0.7
+│  - Lấy alternatives cho format  │
+│    correction                   │
 └──────────────┬───────────────────┘
                │ Validate format VN
                │ Ghép chuỗi theo thứ tự
@@ -509,28 +523,51 @@ Hệ thống sử dụng kiến trúc **3 giai đoạn (3-Stage Pipeline)** dự
 
 ```
 Frame N:   Detect "51A-12345" bbox=[100,200,350,280]
-Frame N+1: Detect "51A-12345" bbox=[102,201,352,281]  ← match (distance < 80px)
+Frame N+1: Detect "51A-12345" bbox=[102,201,352,281]  ← match (IOU + centroid + text)
 Frame N+2: Không detect được                            ← miss_count = 1
 Frame N+3: Không detect được                            ← miss_count = 2
-Frame N+4: Không detect được                            ← miss_count = 3 → FINALIZE
+Frame N+4: Không detect được                            ← miss_count = 3
+Frame N+5: Không detect được                            ← miss_count = 4 → FINALIZE
            │
            ▼
 Character Voting (từng vị trí ký tự):
   Vị trí 0: '5'×5, 'S'×1  → '5' (đa số)
   Vị trí 1: '1'×6          → '1' (đồng nhất)
   ...
-  Kết quả final: "51A-12345" (confidence từ margin voting)
+  Kết quả final: "51A-12345" (confidence từ Geometric Mean)
 ```
+
+**Matching criteria**: Detection match track bằng combined score = IOU×40% + TextSimilarity×40% + CentroidSimilarity×20%. **BẮT BUỘC** text similarity ≥ 0.5 nếu không sẽ tạo track mới.
+
+**Finalized buffer**: Chống trùng lặp — nếu detection match với track vừa finalize trong 5s → skip.
+
+**Merge buffer**: Gộp các track cùng text hoặc fuzzy match (edit_distance ≤ 1, gap ≤ 2s) → combine votes, giữ frame đầu tiên cũ nhất.
+
+### Snapshot Frame Đầu Tiên (Verification)
+
+Khi track finalize (biển số biến mất), hệ thống dùng **frame đầu tiên** của track làm ảnh snapshot verification:
+
+```
+Frame 1: "29A12345" conf=0.72 → lưu frame này làm snapshot verification
+Frame 2: "29A12345" conf=0.89 → cập nhật votes
+Frame 3: "29A12345" conf=0.91 → cập nhật votes
+Frame 4-11: conf giảm dần → giữ votes
+Frame 12: Biển biến mất → finalize
+  → Snapshot: dùng frame 1 (ảnh đầu tiên khi biển xuất hiện)
+  → Confidence: Geometric Mean từ character voting qua tất cả frame
+```
+
+→ Ảnh snapshot là frame đầu tiên khi biển số xuất hiện, giúp admin thấy rõ biển số ở thời điểm ban đầu.
 
 ### Database Tables
 
 | Table | Mô tả |
 |---|---|
 | `users` | Tài khoản người dùng (username, email, password_hash, role, is_verified) |
-| `detections` | Kết quả nhận diện (plate_text, confidence, image_path, source_type, region_id) |
+| `detections` | Kết quả nhận diện (plate_text, plate_confidence, alt_text, alt_confidence, total_frames, frame_start, frame_end, image_path, source_type, region_id, video_job_id) |
 | `predictions` | Xác minh kết quả (is_correct, verified_by) |
 | `regions` | Phân vùng camera (name, location, is_active) |
-| `video_jobs` | Tiến trình xử lý video (status, progress, fps, output_video) |
+| `video_jobs` | Tiến trình xử lý video (status, progress, current_frame, total_frames, fps, duration, output_video, output_csv, output_xlsx) |
 | `statistics` | Thống kê theo ngày (total_detections, avg_confidence, correct/incorrect) |
 | `tokens` | Mã OTP (token, type: email_verify/password_reset, expires_at) |
 | `activity_logs` | Nhật ký hoạt động (action, detail, ip_address) |
@@ -546,14 +583,15 @@ Character Voting (từng vị trí ký tự):
 | **Deskew** | Xoay ảnh biển số về phương ngang (giới hạn ±45°) | `preprocessing.py` |
 | **Plate Padding** | Thêm 8px padding trước khi detect ký tự | `preprocessing.py` |
 | **Filter Small Boxes** | Bỏ box có diện tích < 40% trung bình | `preprocessing.py` |
-| **Dual Classification** | Stage3 chạy cả bản gốc + threshold, lấy conf cao hơn | `ai_pipeline.py` |
+| **Character Classification** | Stage3 phân loại ký tự trên ảnh 64×64, có alternatives cho format correction | `ai_pipeline.py` |
 | **Character Sorting** | Tách 2 dòng theo Y-gap, sort trái→phải mỗi dòng | `ai_pipeline.py` |
 | **Plate Validation** | Validate format biển số VN (8-10 ký tự, chữ hợp lệ) | `validation.py` |
 | **Format Correction** | Sửa ký tự sai dựa trên vị trí trên biển VN (pos0-1=số, pos2=chữ, pos4+=số) | `ai_pipeline.py` |
-| **Centroid Tracking** | Theo dõi centroid detection qua frame (distance < 80px) | `tracking.py` |
+| **Centroid Tracking** | Theo dõi centroid detection qua frame (IOU + centroid + text similarity) | `tracking.py` |
 | **Character Voting** | Majority vote từng vị trí ký tự qua nhiều frame | `tracking.py` |
+| **First Frame Snapshot** | Dùng frame đầu tiên của track làm ảnh snapshot verification | `tracking.py` |
 | **Frame Skip** | Video xử lý ~2 FPS (mỗi frame ~0.5s) để tăng tốc | `predict_service.py` |
-| **Miss Threshold** | 3 frame mất tín hiệu → finalize track | `tracking.py` |
+| **Miss Threshold** | 4 frame mất tín hiệu liên tiếp → finalize track (~2s ở 2 FPS) | `tracking.py` |
 
 ---
 
@@ -562,7 +600,7 @@ Character Voting (từng vị trí ký tự):
 Sau khi chạy backend lần đầu, hệ thống tự động tạo:
 
 - **4 phân vùng camera mặc định**: Camera Cổng Chính, Cổng Phụ, Hầm Gửi Xe A, Hầm Gửi Xe B
-- **Tài khoản admin mặc định**: `admin` / `admin` (bypass qua DB, không cần đăng ký)
+- **Tài khoản admin mặc định**: `abc1` / `123456` (bypass qua DB, không cần đăng ký)
 
 Tài khoản user cần được tạo qua API `/auth/register` và xác thực OTP trước khi đăng nhập.
 

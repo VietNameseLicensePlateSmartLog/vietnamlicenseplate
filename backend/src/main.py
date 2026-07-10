@@ -38,6 +38,24 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass  # Cột đã tồn tại
 
+    # Thêm cột last_login_at, last_logout_at vào users nếu chưa có
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text(
+                "DO $$ BEGIN "
+                "ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP; "
+                "EXCEPTION WHEN duplicate_column THEN NULL; END $$"
+            ))
+            conn.execute(text(
+                "DO $$ BEGIN "
+                "ALTER TABLE users ADD COLUMN last_logout_at TIMESTAMP; "
+                "EXCEPTION WHEN duplicate_column THEN NULL; END $$"
+            ))
+            conn.commit()
+    except Exception:
+        pass
+
     # Seed default regions if empty
     with SessionLocal() as db:
         if db.query(models.Region).count() == 0:

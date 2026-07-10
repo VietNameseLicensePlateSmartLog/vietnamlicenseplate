@@ -58,23 +58,46 @@ export default function Verification() {
     setActionLoading(prev => ({ ...prev, [id]: true }));
     try {
       const correctPlate = editedPlates[id] || '';
-      
+
       // Read the real user ID from localStorage
       const userId = localStorage.getItem('userId') || '0';
-      
+
       // FastAPI expects these parameters in the query string
       const url = `${API_BASE}/admin/verify-detection?detection_id=${id}&correct_plate=${encodeURIComponent(correctPlate)}&is_correct=${isCorrect}&verified_by=${userId}`;
-      
+
       const res = await fetch(url, {
         method: 'POST',
       });
-      
+
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.detail || 'Lỗi khi xác minh.');
       }
-      
+
       // Remove from lists
+      setItems(prev => prev.filter(item => item.id !== id));
+    } catch (err: any) {
+      alert(err.message || 'Đã xảy ra lỗi.');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Bạn có chắc muốn xóa bản ghi nhận diện này?')) return;
+
+    setActionLoading(prev => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch(`${API_BASE}/admin/detections/${id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Lỗi khi xóa.');
+      }
+
+      // Remove from list
       setItems(prev => prev.filter(item => item.id !== id));
     } catch (err: any) {
       alert(err.message || 'Đã xảy ra lỗi.');
@@ -155,14 +178,14 @@ export default function Verification() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                     <span style={{ color: 'rgba(255,255,255,0.5)' }}>Độ tin cậy:</span>
                     <span style={{ color: item.plate_confidence >= 0.8 ? '#34d399' : '#fbbf24', fontWeight: 600 }}>
-                      {Math.round(item.plate_confidence * 100)}%
+                      {(item.plate_confidence * 100).toFixed(2)}%
                     </span>
                   </div>
                   {item.alt_text && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                       <span style={{ color: 'rgba(255,255,255,0.4)' }}>Biển phụ:</span>
                       <span style={{ color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' }}>
-                        {item.alt_text} ({Math.round((item.alt_confidence || 0) * 100)}%)
+                        {item.alt_text} ({((item.alt_confidence || 0) * 100).toFixed(2)}%)
                       </span>
                     </div>
                   )}
@@ -182,31 +205,44 @@ export default function Verification() {
                     />
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '5px' }}>
-                    <button 
-                      onClick={() => handleVerify(item.id, 1)} 
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '5px' }}>
+                    <button
+                      onClick={() => handleVerify(item.id, 1)}
                       disabled={isSaving || editedPlates[item.id] !== item.plate_text}
-                      style={{ 
-                        backgroundColor: '#10b981', 
-                        color: '#fff', 
+                      style={{
+                        backgroundColor: '#10b981',
+                        color: '#fff',
                         opacity: (isSaving || editedPlates[item.id] !== item.plate_text) ? 0.5 : 1,
                         cursor: (isSaving || editedPlates[item.id] !== item.plate_text) ? 'not-allowed' : 'pointer'
                       }}
                     >
                       {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <><i className="fa-solid fa-check" style={{ marginRight: '5px' }}></i>Đúng</>}
                     </button>
-                    <button 
-                      onClick={() => handleVerify(item.id, 0)} 
+                    <button
+                      onClick={() => handleVerify(item.id, 0)}
                       disabled={isSaving || !editedPlates[item.id]}
-                      style={{ 
-                        backgroundColor: 'rgba(245, 158, 11, 0.2)', 
+                      style={{
+                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
                         border: '1px solid rgba(245, 158, 11, 0.4)',
                         color: '#fbc02d',
                         opacity: (isSaving || !editedPlates[item.id]) ? 0.5 : 1,
                         cursor: (isSaving || !editedPlates[item.id]) ? 'not-allowed' : 'pointer'
                       }}
                     >
-                      {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <><i className="fa-solid fa-pen-to-square" style={{ marginRight: '5px' }}></i>Sửa & Lưu</>}
+                      {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <><i className="fa-solid fa-xmark" style={{ marginRight: '5px' }}></i>Sai</>}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      disabled={isSaving}
+                      style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                        color: '#f87171',
+                        opacity: isSaving ? 0.5 : 1,
+                        cursor: isSaving ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <><i className="fa-solid fa-trash" style={{ marginRight: '5px' }}></i>Xóa</>}
                     </button>
                   </div>
                 </div>

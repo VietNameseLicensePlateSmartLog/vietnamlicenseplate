@@ -154,7 +154,7 @@ export default function GeneralHistoryModal({ isOpen, onClose }: GeneralHistoryM
                           </td>
                           <td style={{ padding: '0.9rem 1rem' }}>
                             <span className="badge badge-conf" style={{ fontSize: '0.8rem' }}>
-                              {Math.round(item.plate_confidence * 100)}%
+                              {(item.plate_confidence * 100).toFixed(2)}%
                             </span>
                           </td>
                           <td style={{ padding: '0.9rem 1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
@@ -192,7 +192,7 @@ export default function GeneralHistoryModal({ isOpen, onClose }: GeneralHistoryM
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span>Độ chính xác:</span>
-                          <span className="badge badge-conf">{Math.round(selectedItem.plate_confidence * 100)}%</span>
+                          <span className="badge badge-conf">{(selectedItem.plate_confidence * 100).toFixed(2)}%</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span>Thời gian lưu:</span>

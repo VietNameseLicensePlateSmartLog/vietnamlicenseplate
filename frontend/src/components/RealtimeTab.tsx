@@ -215,7 +215,7 @@ export default function RealtimeTab() {
       ctx.lineWidth = 4;
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-      const label = `${plate.text} (${Math.round(plate.conf * 100)}%)`;
+      const label = `${plate.text} (${(plate.conf * 100).toFixed(2)}%)`;
       ctx.font = 'bold 16px Outfit, Inter, Arial';
       const textWidth = ctx.measureText(label).width;
 
@@ -288,7 +288,7 @@ export default function RealtimeTab() {
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
       // Vẽ nhãn văn bản biển số
-      const label = `${plate.text} (${Math.round(plate.conf * 100)}%)`;
+      const label = `${plate.text} (${(plate.conf * 100).toFixed(2)}%)`;
       ctx.font = 'bold 12px Outfit, Inter, Arial';
       const textWidth = ctx.measureText(label).width;
 
@@ -344,6 +344,15 @@ export default function RealtimeTab() {
         } else {
           const activeInfo = activePlates[foundActiveText];
           activeInfo.lastSeen = now;
+
+          // Cập nhật confidence mới nhất cho record trong lịch sử
+          const existingRecord = historyRecordsRef.current.find(r => r.id === activeInfo.recordId);
+          if (existingRecord) {
+            existingRecord.maxConf = conf;
+            existingRecord.endTime = new Date();
+            existingRecord.snapshot = getAnnotatedSnapshot(results);
+            setHistoryRecords([...historyRecordsRef.current]);
+          }
         }
       });
     }
@@ -607,7 +616,7 @@ export default function RealtimeTab() {
                               <span className="history-time">
                                 <i className="fa-regular fa-clock"></i> {timeDisplay}
                               </span>
-                              <span className="badge badge-conf">{Math.round(record.maxConf * 100)}% Conf</span>
+                              <span className="badge badge-conf">{(record.maxConf * 100).toFixed(2)}% Conf</span>
                             </div>
                           </div>
                           <span className="badge badge-text" title="Bấm để xem ảnh chụp">

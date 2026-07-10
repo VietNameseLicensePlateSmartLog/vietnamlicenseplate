@@ -57,3 +57,7 @@ class AdminController:
     @staticmethod
     def admin_delete_user(user_id: int, db: Session):
         return AdminService.admin_delete_user(user_id, db)
+
+    @staticmethod
+    def admin_delete_detection(detection_id: int, db: Session):
+        return AdminService.admin_delete_detection(detection_id, db)

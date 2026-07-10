@@ -243,7 +243,7 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
                         continue
                     valid_plates.append(plate)
 
-                finalized = centroid_tracker.update(valid_plates, frame_idx=frame_idx)
+                finalized = centroid_tracker.update(valid_plates, frame_idx=frame_idx, frame_img=pil_img)
 
                 # Lưu finalized detections vào DB
                 for result in finalized:
@@ -254,10 +254,12 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
                         format_score = result.get('format_score', 0)
                         if not is_valid_plate(final_text) or format_score <= 0:
                             continue
+                        # Dùng frame đầu tiên của track để chụp snapshot verification
+                        first_img = result.get('first_frame_img') or result.get('best_frame_img') or pil_img
                         if final_bbox:
-                            annotated_img = draw_plate_results(pil_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
+                            annotated_img = draw_plate_results(first_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
                         else:
-                            annotated_img = draw_plate_results(pil_img, [{'bbox': [0, 0, 100, 100], 'text': final_text, 'conf': final_conf}])
+                            annotated_img = draw_plate_results(first_img, [{'bbox': [0, 0, 100, 100], 'text': final_text, 'conf': final_conf}])
                         snapshot_rel_path = save_snapshot_image(annotated_img)
                         with SessionLocal() as db:
                             db_item = models.Detection(
@@ -346,8 +348,13 @@ def process_video_background(job_id: int, input_path: str, output_path: str, fil
                 if format_score <= 0:
                     continue
 
+                # Dùng frame đầu tiên của track để chụp snapshot verification
+                first_img = result.get('first_frame_img') or result.get('best_frame_img')
+
                 try:
-                    if final_bbox and pil_img:
+                    if final_bbox and first_img:
+                        annotated_img = draw_plate_results(first_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
+                    elif final_bbox and pil_img:
                         annotated_img = draw_plate_results(pil_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
                     else:
                         from PIL import Image as PILImage
@@ -695,7 +702,7 @@ class PredictService:
                     valid_plates.append(plate)
 
                 # Centroid Tracking + Character Voting
-                finalized = centroid_tracker.update(valid_plates, frame_idx=centroid_tracker._frame_idx)
+                finalized = centroid_tracker.update(valid_plates, frame_idx=centroid_tracker._frame_idx, frame_img=pil_img)
 
                 # Lưu các track đã finalize (biển số đã ổn định) vào DB
                 for result in finalized:
@@ -709,11 +716,14 @@ class PredictService:
                     if format_score <= 0:
                         continue
 
+                    # Dùng frame đầu tiên của track để chụp snapshot verification
+                    first_img = result.get('first_frame_img') or result.get('best_frame_img') or pil_img
+
                     # Vẽ snapshot với bounding box thật
                     if final_bbox:
-                        annotated_img = draw_plate_results(pil_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
+                        annotated_img = draw_plate_results(first_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
                     else:
-                        annotated_img = draw_plate_results(pil_img, [{'bbox': [0, 0, 100, 100], 'text': final_text, 'conf': final_conf}])
+                        annotated_img = draw_plate_results(first_img, [{'bbox': [0, 0, 100, 100], 'text': final_text, 'conf': final_conf}])
                     snapshot_rel_path = save_snapshot_image(annotated_img)
 
                     with SessionLocal() as db:
@@ -743,10 +753,12 @@ class PredictService:
                 # - finalized: biển đã ổn định (lưu DB, hiển thị history)
                 # - active_plates: các biển đang track (hiển thị live bbox)
                 # Conf values: 0-1 (frontend × 100 khi display)
+                # NOTE: Loại bỏ PIL.Image fields trước khi gửi JSON
                 active_plates = centroid_tracker.get_active_plates()
+                clean_finalized = [{k: v for k, v in r.items() if k not in ('best_frame_img', 'first_frame_img')} for r in finalized]
                 await websocket.send_json({
                     "status": "success",
-                    "results": finalized,
+                    "results": clean_finalized,
                     "active_plates": active_plates
                 })
 

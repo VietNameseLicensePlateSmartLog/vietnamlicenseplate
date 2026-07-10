@@ -367,7 +367,7 @@ class LPRPipeline:
 
                 if pred_conf >= conf3:
                     plate_text += str(pred_char)
-                    plate_char_conf.append(round(pred_conf, 2))
+                    plate_char_conf.append(pred_conf)
                 else:
                     plate_text += '?'
                     plate_char_conf.append(0.0)
@@ -399,7 +399,7 @@ class LPRPipeline:
             plates.append({
                 'bbox': [x1, y1, x2, y2],
                 'text': plate_text,
-                'conf': round(avg_conf, 2),
+                'conf': avg_conf,
                 'char_confs': plate_char_conf
             })
 

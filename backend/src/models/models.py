@@ -1,5 +1,6 @@
 # Định nghĩa cấu trúc bảng (ORM Models)
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime, Boolean, Date, ForeignKey, SmallInteger, BigInteger
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from src.config.database import Base
 
@@ -24,6 +25,8 @@ class User(Base):
     is_verified = Column(SmallInteger, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
     failed_attempts = Column(Integer, nullable=False, default=0)
+    last_login_at = Column(DateTime, nullable=True)
+    last_logout_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -60,6 +63,8 @@ class ActivityLog(Base):
     detail = Column(Text, nullable=True)
     ip_address = Column(String(45), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User", foreign_keys=[user_id], lazy="select")
 
 class VideoJob(Base):
     __tablename__ = "video_jobs"

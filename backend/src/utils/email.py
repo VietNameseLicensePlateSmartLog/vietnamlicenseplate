@@ -14,7 +14,7 @@ def test_smtp_connection(to_email: str, otp: str) -> dict:
         }
 
     msg = MIMEMultipart()
-    msg['From'] = settings.SMTP_USER
+    msg['From'] = f"Vietnamese license plates AI <{settings.SMTP_USER}>"
     msg['To'] = to_email
     msg['Subject'] = "[TEST] Vietnam LPR - Kiểm tra gửi email"
     body = f"<h3>Email test thành công!</h3><p>Mã OTP test: <b>{otp}</b></p>"
@@ -64,7 +64,7 @@ def send_otp_email(to_email: str, otp: str):
         return False
 
     msg = MIMEMultipart()
-    msg['From'] = settings.SMTP_USER
+    msg['From'] = f"Vietnamese license plates AI <{settings.SMTP_USER}>"
     msg['To'] = to_email
     msg['Subject'] = "Mã OTP xác thực Vietnam LPR"
 

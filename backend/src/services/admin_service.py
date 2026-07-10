@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy import func as sa_func, cast, Date as SADate
@@ -258,7 +259,7 @@ class AdminService:
         return [
             {
                 "id": l.id,
-                "user_id": l.user_id,
+                "user_email": l.user.email if l.user else None,
                 "action": l.action,
                 "detail": l.detail,
                 "ip_address": l.ip_address,
@@ -361,3 +362,39 @@ class AdminService:
             "status": "success",
             "message": f"Đã xóa tài khoản '{username}' thành công."
         }
+
+    @staticmethod
+    def admin_delete_detection(detection_id: int, db: Session):
+        """Xóa bản ghi nhận diện (detection) khỏi database."""
+        detection = db.query(models.Detection).filter(models.Detection.id == detection_id).first()
+        if not detection:
+            raise HTTPException(status_code=404, detail="Không tìm thấy bản ghi nhận diện.")
+
+        # Xóa file snapshot nếu tồn tại
+        if detection.image_path:
+            # image_path dạng "/static/snapshots/xxx.jpg" hoặc URL tương đối
+            file_path = os.path.join("backend", detection.image_path.lstrip("/"))
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass  # Không chặn xóa DB nếu file đã bị xóa
+
+        # Xóa Prediction liên quan (nếu đã được verify trước đó) + cập nhật Statistic
+        prediction = db.query(models.Prediction).filter(models.Prediction.detection_id == detection_id).first()
+        if prediction:
+            today = get_vietnam_now().date()
+            stat = db.query(models.Statistic).filter(models.Statistic.stat_date == today).first()
+            if stat:
+                if prediction.is_correct == 1:
+                    stat.correct_count = max(0, stat.correct_count - 1)
+                else:
+                    stat.incorrect_count = max(0, stat.incorrect_count - 1)
+            db.delete(prediction)
+
+        plate_text = detection.plate_text
+        db.delete(detection)
+        db.commit()
+
+        log_activity(db, None, "Xóa detection", f"Đã xóa bản ghi nhận diện #{detection_id} (biển số '{plate_text}').")
+        return {"status": "success", "message": "Đã xóa bản ghi nhận diện thành công."}

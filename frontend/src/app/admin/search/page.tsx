@@ -235,12 +235,12 @@ export default function SearchDetections() {
                         </span>
                         {item.alt_text && (
                           <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', marginTop: '3px', fontStyle: 'italic' }}>
-                            Alt: {item.alt_text} ({Math.round((item.alt_confidence || 0) * 100)}%)
+                            Alt: {item.alt_text} ({((item.alt_confidence || 0) * 100).toFixed(2)}%)
                           </div>
                         )}
                       </td>
                       <td style={{ color: item.plate_confidence >= 0.8 ? '#34d399' : '#fbbf24', fontWeight: 600 }}>
-                        {Math.round(item.plate_confidence * 100)}%
+                        {(item.plate_confidence * 100).toFixed(2)}%
                       </td>
                       <td style={{ textTransform: 'capitalize' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>

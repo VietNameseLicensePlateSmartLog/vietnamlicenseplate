@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
+import { formatVnTime, getThumbnailUrl } from '@/lib/utils';
 
 interface StatsData {
   total_verified: number;
@@ -10,10 +11,22 @@ interface StatsData {
   accuracy: number;
 }
 
+interface IncorrectDetection {
+  detection_id: number;
+  predicted_text: string;
+  correct_plate: string;
+  image_path: string;
+  source_type: string;
+  plate_confidence: number;
+  verified_at: string;
+}
+
 export default function PredictionRatio() {
   const [stats, setStats] = useState<StatsData | null>(null);
+  const [incorrectList, setIncorrectList] = useState<IncorrectDetection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const fetchStats = async () => {
     try {
@@ -36,8 +49,29 @@ export default function PredictionRatio() {
     }
   };
 
+  const fetchIncorrect = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/detections/incorrect?limit=50`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setIncorrectList(data);
+    } catch { /* silent */ }
+  };
+
+  const handleDeleteIncorrect = async (detectionId: number) => {
+    if (!confirm('Bạn có chắc muốn xóa bản ghi nhận diện này?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/detections/${detectionId}`, { method: 'DELETE' });
+      if (!res.ok) return;
+      setIncorrectList(prev => prev.filter(item => item.detection_id !== detectionId));
+      // Cập nhật lại stats
+      fetchStats();
+    } catch { /* silent */ }
+  };
+
   useEffect(() => {
     fetchStats();
+    fetchIncorrect();
   }, []);
 
   if (isLoading) {
@@ -167,6 +201,125 @@ export default function PredictionRatio() {
           </div>
         </div>
       </div>
+
+      {/* Danh sách biển số nhận diện sai */}
+      <div style={{ marginTop: '25px' }}>
+        <h2 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <i className="fa-solid fa-circle-xmark" style={{ color: '#ef4444' }}></i>
+          Biển số nhận diện sai
+          {incorrectList.length > 0 && (
+            <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#fca5a5', background: 'rgba(239,68,68,0.15)', padding: '2px 10px', borderRadius: '12px' }}>
+              {incorrectList.length}
+            </span>
+          )}
+        </h2>
+
+        {incorrectList.length === 0 ? (
+          <div className="card" style={{ padding: '30px', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
+            <i className="fa-solid fa-circle-check" style={{ fontSize: '1.5rem', color: '#10b981', marginBottom: '10px' }}></i>
+            <p>Chưa có biển số nào bị nhận diện sai. Hãy quay lại trang <strong>Xác minh</strong> để duyệt kết quả.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {incorrectList.map((item) => (
+              <div key={item.detection_id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '18px', padding: '14px 18px' }}>
+                {/* Ảnh snapshot — click để phóng to */}
+                <div
+                  onClick={() => item.image_path && setPreviewImage(item.image_path)}
+                  style={{ width: '120px', height: '75px', borderRadius: '8px', overflow: 'hidden', background: '#000', flexShrink: 0, border: '1px solid rgba(255,255,255,0.05)', cursor: item.image_path ? 'pointer' : 'default' }}
+                >
+                  {item.image_path ? (
+                    <img
+                      loading="lazy"
+                      src={getThumbnailUrl(item.image_path)}
+                      alt="Snapshot"
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>
+                      Không có ảnh
+                    </div>
+                  )}
+                </div>
+
+                {/* Thông tin */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>AI dự đoán:</span>
+                    <span style={{ fontWeight: 700, letterSpacing: '1px', color: '#fca5a5', textDecoration: 'line-through' }}>
+                      {item.predicted_text}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.5)' }}>Đúng là:</span>
+                    <span style={{ fontWeight: 700, letterSpacing: '1px', color: '#34d399' }}>
+                      {item.correct_plate}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
+                    <span>
+                      <i className="fa-solid fa-camera" style={{ marginRight: '4px' }}></i>
+                      {item.source_type}
+                    </span>
+                    <span>
+                      <i className="fa-solid fa-circle-check" style={{ marginRight: '4px' }}></i>
+                      {(item.plate_confidence * 100).toFixed(1)}%
+                    </span>
+                    {item.verified_at && (
+                      <span>
+                        <i className="fa-solid fa-clock" style={{ marginRight: '4px' }}></i>
+                        {formatVnTime(item.verified_at)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Nút xóa */}
+                <div
+                  onClick={() => handleDeleteIncorrect(item.detection_id)}
+                  style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(239,68,68,0.15)', cursor: 'pointer', transition: 'background 0.2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.3)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.15)')}
+                >
+                  <i className="fa-solid fa-xmark" style={{ color: '#ef4444', fontSize: '1rem' }}></i>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal xem ảnh phóng to */}
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            cursor: 'pointer'
+          }}
+        >
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
+            <img
+              src={previewImage}
+              alt="Preview"
+              style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px' }}
+            />
+            <div
+              onClick={() => setPreviewImage(null)}
+              style={{
+                position: 'absolute', top: '-12px', right: '-12px',
+                width: '32px', height: '32px', borderRadius: '50%',
+                background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', fontSize: '0.9rem', color: '#fff'
+              }}
+            >
+              <i className="fa-solid fa-xmark"></i>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

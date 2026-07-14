@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
+import DetectionDrilldownModal from '@/components/admin/DetectionDrilldownModal';
 
 interface DailyChartItem { date: string; count: number; }
 interface SourceChartItem { source: string; count: number; }
@@ -60,10 +61,13 @@ function DonutChart({ segments, size = 160, thickness = 24 }: { segments: { labe
 }
 
 // ===== Horizontal Bar Component =====
-function HBar({ label, value, maxValue, color }: { label: string; value: number; maxValue: number; color: string }) {
+function HBar({ label, value, maxValue, color, onClick }: { label: string; value: number; maxValue: number; color: string; onClick?: () => void }) {
   const pct = maxValue > 0 ? (value / maxValue) * 100 : 0;
   return (
-    <div style={{ marginBottom: '12px' }}>
+    <div
+      style={{ marginBottom: '12px', cursor: onClick && value > 0 ? 'pointer' : 'default' }}
+      onClick={onClick}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '0.85rem' }}>
         <span style={{ color: 'rgba(255,255,255,0.7)' }}>{label}</span>
         <span style={{ fontWeight: 600, color }}>{value}</span>
@@ -80,6 +84,19 @@ export default function Dashboard() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [drilldown, setDrilldown] = useState<{
+    isOpen: boolean;
+    title: string;
+    filterParams: { plate?: string; min_confidence?: number; max_confidence?: number };
+  }>({ isOpen: false, title: '', filterParams: {} });
+
+  // Confidence ranges mapping cho drill-down
+  const confRanges: Record<string, { min: number; max: number }> = {
+    '90-100%': { min: 0.9, max: 1.01 },
+    '70-89%': { min: 0.7, max: 0.8999 },
+    '50-69%': { min: 0.5, max: 0.6999 },
+    'Dưới 50%': { min: 0.0, max: 0.4999 },
+  };
 
   const fetchStats = async () => {
     try {
@@ -265,18 +282,29 @@ export default function Dashboard() {
             </div>
           ) : (
             <div>
-              {stats.top_plates.map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                  <span style={{ width: '20px', fontSize: '0.85rem', fontWeight: 700, color: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
-                    {i + 1}
-                  </span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.9rem', minWidth: '90px' }}>{item.plate}</span>
-                  <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: 'linear-gradient(90deg, #4f46e5, #818cf8)', width: `${(item.count / maxPlate) * 100}%`, borderRadius: '3px' }} />
+              {stats.top_plates.map((item, i) => {
+                const isTop3 = i < 3;
+                return (
+                  <div
+                    key={i}
+                    style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', cursor: isTop3 ? 'pointer' : 'default' }}
+                    onClick={isTop3 ? () => setDrilldown({
+                      isOpen: true,
+                      title: `Biển số ${item.plate} — ${item.count} lần nhận diện`,
+                      filterParams: { plate: item.plate },
+                    }) : undefined}
+                  >
+                    <span style={{ width: '20px', fontSize: '0.85rem', fontWeight: 700, color: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : 'rgba(255,255,255,0.3)', textAlign: 'center', flexShrink: 0 }}>
+                      {i + 1}
+                    </span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.9rem', minWidth: '90px', textDecoration: isTop3 ? 'underline' : 'none', textDecorationColor: 'rgba(255,255,255,0.3)' }}>{item.plate}</span>
+                    <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', background: 'linear-gradient(90deg, #4f46e5, #818cf8)', width: `${(item.count / maxPlate) * 100}%`, borderRadius: '3px' }} />
+                    </div>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(255,255,255,0.6)', minWidth: '30px', textAlign: 'right' }}>{item.count}</span>
                   </div>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(255,255,255,0.6)', minWidth: '30px', textAlign: 'right' }}>{item.count}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -295,14 +323,34 @@ export default function Dashboard() {
             <div>
               {stats.conf_distribution.map((item, i) => {
                 const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
+                const range = confRanges[item.label];
                 return (
-                  <HBar key={i} label={item.label} value={item.count} maxValue={maxConf} color={colors[i]} />
+                  <HBar
+                    key={i}
+                    label={item.label}
+                    value={item.count}
+                    maxValue={maxConf}
+                    color={colors[i]}
+                    onClick={range && item.count > 0 ? () => setDrilldown({
+                      isOpen: true,
+                      title: `Confidence ${item.label} — ${item.count} biển`,
+                      filterParams: { min_confidence: range.min, max_confidence: range.max },
+                    }) : undefined}
+                  />
                 );
               })}
             </div>
           )}
         </div>
       </div>
+
+      {/* Drill-down Modal */}
+      <DetectionDrilldownModal
+        isOpen={drilldown.isOpen}
+        onClose={() => setDrilldown(prev => ({ ...prev, isOpen: false }))}
+        title={drilldown.title}
+        filterParams={drilldown.filterParams}
+      />
     </>
   );
 }

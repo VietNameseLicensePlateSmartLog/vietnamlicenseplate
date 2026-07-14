@@ -741,6 +741,49 @@ body {
     color: var(--danger);
 }
 
+/* Video Preview — Live bounding box display during processing */
+.video-preview-section {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.video-preview-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 10px;
+    color: var(--text-secondary);
+}
+
+.video-preview-header h4 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.video-preview-header i {
+    color: var(--accent);
+    font-size: 0.85rem;
+}
+
+.video-preview-container {
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    max-height: 360px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.video-preview-image {
+    width: 100%;
+    height: auto;
+    max-height: 360px;
+    object-fit: contain;
+    display: block;
+}
+
 /* Footer styling */
 .app-footer {
     border-top: 1px solid var(--border-color);
@@ -1711,40 +1754,328 @@ body {
 }
 
 /* ================================================================
-   LOGIN PAGE - Full-page Standalone (not modal)
+   LOGIN PAGE - Waze-Inspired Playful Theme
    ================================================================ */
 
-.login-page-root {
+/* ─── Root ─── */
+.waze-login-root {
     position: relative;
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 2rem;
+    background: linear-gradient(135deg, #00D4FF 0%, #00B4D8 30%, #0096C7 60%, #0077B6 100%);
+    overflow: hidden;
 }
 
-.login-page-root > .fixed {
+/* ─── Floating Clouds ─── */
+.waze-clouds {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
     z-index: 0;
 }
 
-.login-page-container {
+.waze-cloud {
+    position: absolute;
+    opacity: 0.35;
+}
+
+.waze-cloud svg {
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.08));
+}
+
+.waze-cloud-1 {
+    top: 8%;
+    left: -10%;
+    animation: cloudDrift1 28s ease-in-out infinite;
+}
+
+.waze-cloud-2 {
+    top: 22%;
+    right: -12%;
+    animation: cloudDrift2 34s ease-in-out infinite;
+    opacity: 0.25;
+}
+
+.waze-cloud-3 {
+    bottom: 15%;
+    left: 10%;
+    animation: cloudDrift3 30s ease-in-out infinite;
+    opacity: 0.2;
+}
+
+.waze-cloud-4 {
+    top: 38%;
+    right: 5%;
+    animation: cloudDrift4 32s ease-in-out infinite;
+    opacity: 0.22;
+}
+
+.waze-cloud-5 {
+    bottom: 30%;
+    right: 15%;
+    animation: cloudDrift5 26s ease-in-out infinite;
+    opacity: 0.18;
+}
+
+@keyframes cloudDrift1 {
+    0%   { transform: translateX(0) translateY(0); }
+    25%  { transform: translateX(12vw) translateY(8px); }
+    50%  { transform: translateX(6vw) translateY(-4px); }
+    75%  { transform: translateX(14vw) translateY(6px); }
+    100% { transform: translateX(0) translateY(0); }
+}
+
+@keyframes cloudDrift2 {
+    0%   { transform: translateX(0) translateY(0); }
+    25%  { transform: translateX(-10vw) translateY(-6px); }
+    50%  { transform: translateX(-5vw) translateY(4px); }
+    75%  { transform: translateX(-12vw) translateY(-8px); }
+    100% { transform: translateX(0) translateY(0); }
+}
+
+@keyframes cloudDrift3 {
+    0%   { transform: translateX(0) translateY(0); }
+    33%  { transform: translateX(8vw) translateY(10px); }
+    66%  { transform: translateX(-3vw) translateY(-6px); }
+    100% { transform: translateX(0) translateY(0); }
+}
+
+@keyframes cloudDrift4 {
+    0%   { transform: translateX(0) translateY(0); }
+    25%  { transform: translateX(-7vw) translateY(8px); }
+    50%  { transform: translateX(-3vw) translateY(-5px); }
+    75%  { transform: translateX(-9vw) translateY(3px); }
+    100% { transform: translateX(0) translateY(0); }
+}
+
+@keyframes cloudDrift5 {
+    0%   { transform: translateX(0) translateY(0); }
+    30%  { transform: translateX(-5vw) translateY(-8px); }
+    60%  { transform: translateX(4vw) translateY(6px); }
+    100% { transform: translateX(0) translateY(0); }
+}
+
+/* ─── Container ─── */
+.waze-login-container {
     display: flex;
-    width: 90%;
-    max-width: 900px;
-    min-height: 520px;
-    border-radius: 20px;
+    width: 92%;
+    max-width: 960px;
+    min-height: 540px;
+    border-radius: 28px;
     overflow: hidden;
-    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(99, 102, 241, 0.15);
-    animation: loginSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow:
+        0 25px 80px rgba(0, 80, 160, 0.25),
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    animation: wazeSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
     z-index: 1;
 }
 
-/* Left Branding */
-.login-page-branding {
-    width: 50%;
-    background: linear-gradient(160deg, #1a1040 0%, #0f0a2e 30%, #0a1628 70%, #0d1117 100%);
+@keyframes wazeSlideUp {
+    from { transform: translateY(50px) scale(0.96); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* ─── Left Branding Panel ─── */
+.waze-login-left {
+    width: 48%;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     padding: 2.5rem 2rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.waze-brand-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 1.2rem;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.waze-brand-logo i {
+    font-size: 1.3rem;
+    color: #FFD93D;
+}
+
+.waze-brand-title {
+    font-size: 1.9rem;
+    font-weight: 900;
+    color: #fff;
+    line-height: 1.2;
+    margin-bottom: 0.8rem;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+
+.waze-brand-desc {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.8);
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+    max-width: 320px;
+}
+
+/* ─── Road Scene ─── */
+.waze-road-scene {
+    position: relative;
+    width: 100%;
+    height: 160px;
+    margin: 0.5rem 0 1rem;
+}
+
+.waze-road-svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* ─── Cars ─── */
+.waze-car-group {
+    offset-path: path('M-20,110 C60,110 100,50 180,50 C260,50 300,110 380,110');
+    offset-distance: 0%;
+    offset-rotate: auto;
+    animation: carDrive 6s linear infinite;
+}
+
+.waze-car-group-2 {
+    offset-path: path('M-20,110 C60,110 100,50 180,50 C260,50 300,110 380,110');
+    offset-distance: 0%;
+    offset-rotate: auto;
+    animation: carDrive 6s linear infinite;
+    animation-delay: -2s;
+}
+
+.waze-car-group-3 {
+    offset-path: path('M-20,110 C60,110 100,50 180,50 C260,50 300,110 380,110');
+    offset-distance: 0%;
+    offset-rotate: auto;
+    animation: carDrive 6s linear infinite;
+    animation-delay: -4s;
+}
+
+@keyframes carDrive {
+    0%   { offset-distance: 0%; }
+    100% { offset-distance: 100%; }
+}
+
+/* ─── Detection Bubble ─── */
+.waze-detection-bubble {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fff;
+    border-radius: 16px;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    animation: bubblePop 4s ease-in-out infinite;
+    white-space: nowrap;
+}
+
+.waze-detection-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 8px solid #fff;
+}
+
+.waze-bubble-icon {
+    width: 22px;
+    height: 22px;
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    color: #fff;
+}
+
+.waze-bubble-text {
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #1E3A5F;
+    letter-spacing: 1px;
+}
+
+.waze-bubble-label {
+    font-size: 0.65rem;
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+@keyframes bubblePop {
+    0%, 20%  { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.9); }
+    30%, 70% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    80%, 100%{ opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.95); }
+}
+
+/* ─── Feature Tags ─── */
+.waze-tags {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.waze-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.7rem;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.3px;
+    animation: tagAppear 0.5s ease-out backwards;
+}
+
+.waze-tag:nth-child(1) { animation-delay: 0.6s; }
+.waze-tag:nth-child(2) { animation-delay: 0.8s; }
+.waze-tag:nth-child(3) { animation-delay: 1.0s; }
+
+.waze-tag i {
+    font-size: 0.6rem;
+    color: #FFD93D;
+}
+
+@keyframes tagAppear {
+    from { opacity: 0; transform: scale(0.8) translateY(6px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ─── Right Form Panel ─── */
+.waze-login-right {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    padding: 2.5rem 2.2rem;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -1752,47 +2083,426 @@ body {
     overflow: hidden;
 }
 
-/* Right Form */
-.login-page-form {
-    flex: 1;
-    background: linear-gradient(180deg, #141829 0%, #0f1225 100%);
-    padding: 2.5rem 2rem;
+.waze-login-right::before {
+    content: '';
+    position: absolute;
+    top: -60px;
+    right: -60px;
+    width: 180px;
+    height: 180px;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.08) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.waze-login-right::after {
+    content: '';
+    position: absolute;
+    bottom: -40px;
+    left: -40px;
+    width: 140px;
+    height: 140px;
+    background: radial-gradient(circle, rgba(255, 217, 61, 0.08) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.waze-form-inner {
+    width: 100%;
+    max-width: 340px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+}
+
+/* ─── Form Title ─── */
+.waze-form-header {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-bottom: 0.3rem;
+}
+
+.waze-form-icon {
+    width: 42px;
+    height: 42px;
+    background: linear-gradient(135deg, #00D4FF, #0096C7);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(0, 150, 199, 0.3);
+    flex-shrink: 0;
+}
+
+.waze-form-title {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #0D2B3E;
+    margin-bottom: 0;
+}
+
+.waze-form-subtitle {
+    font-size: 0.82rem;
+    color: #6B8DA0;
+    margin-bottom: 1.8rem;
+    margin-top: 0.4rem;
+}
+
+/* ─── Form Layout ─── */
+.waze-form {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    gap: 1rem;
+}
+
+.waze-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.waze-field-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #0D2B3E;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.waze-field-label i {
+    font-size: 0.75rem;
+    color: #0096C7;
+}
+
+/* ─── Input Fields ─── */
+.waze-input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    background: #EDF5FA;
+    border: 2px solid #D6E8F2;
+    border-radius: 14px;
+    color: #0D2B3E;
+    font-size: 0.9rem;
+    outline: none;
+    transition: all 0.25s;
+    box-sizing: border-box;
+}
+
+.waze-input::placeholder {
+    color: #9DBDD0;
+}
+
+.waze-input:focus {
+    border-color: #00B4D8;
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(0, 180, 216, 0.1);
+}
+
+.waze-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.waze-input-otp {
+    letter-spacing: 12px;
+    text-align: center;
+    font-size: 1.4rem;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    padding: 0.85rem 1rem;
+    background: #EDF5FA;
+    border: 2px dashed #B8D8E8;
+    border-radius: 14px;
+}
+
+.waze-input-otp:focus {
+    border-style: solid;
+    border-color: #00B4D8;
+    background: #fff;
+}
+
+/* ─── Password Toggle ─── */
+.waze-password-wrapper {
     position: relative;
+}
+
+.waze-password-wrapper .waze-input {
+    padding-right: 2.8rem;
+}
+
+.waze-password-toggle {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #90B0C5;
+    cursor: pointer;
+    padding: 0.3rem;
+    font-size: 0.9rem;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.waze-password-toggle:hover {
+    color: #3D5A73;
+}
+
+/* ─── Alerts ─── */
+.waze-alert {
+    padding: 0.75rem 1rem;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    line-height: 1.4;
+}
+
+.waze-alert-success {
+    color: #1B7A40;
+    background: linear-gradient(135deg, #E0F7E9, #C8F0D4);
+    border: 1.5px solid #81D89E;
+}
+
+.waze-alert-error {
+    color: #C62828;
+    background: linear-gradient(135deg, #FFE8E8, #FFD4D4);
+    border: 1.5px solid #F5A0A0;
+}
+
+.waze-alert-info {
+    color: #0D5E7E;
+    background: linear-gradient(135deg, #E0F4FF, #D0EEFF);
+    border: 1.5px solid #90D0F0;
+    line-height: 1.5;
+}
+
+.waze-alert-warning {
+    color: #B84600;
+    background: linear-gradient(135deg, #FFF5E0, #FFECC8);
+    border: 1.5px solid #FFCC80;
+    line-height: 1.5;
+}
+
+.waze-alert-warning strong {
+    color: #B84600;
+}
+
+.waze-alert-warning div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* ─── Forgot Password Link ─── */
+.waze-forgot-link {
+    text-align: right;
+    margin-top: -0.3rem;
+}
+
+.waze-forgot-link button {
+    background: none;
+    border: none;
+    color: #0096C7;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: none;
+    transition: all 0.2s;
+    border-radius: 6px;
+}
+
+.waze-forgot-link button:hover {
+    color: #0077B6;
+    background: rgba(0, 150, 199, 0.08);
+}
+
+/* ─── Submit Button ─── */
+.waze-submit-btn {
+    width: 100%;
+    padding: 0.85rem 1.5rem;
+    background: linear-gradient(135deg, #FFD93D, #FFC107);
+    color: #5D4200;
+    border: none;
+    border-radius: 14px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.3rem;
+    box-shadow: 0 4px 18px rgba(255, 193, 7, 0.35);
+    position: relative;
+    overflow: hidden;
+}
+
+.waze-submit-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+    transition: left 0.5s;
+}
+
+.waze-submit-btn:hover:not(:disabled)::before {
+    left: 100%;
+}
+
+.waze-submit-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #FFE066, #FFD54F);
+    box-shadow: 0 6px 28px rgba(255, 193, 7, 0.5);
+    transform: translateY(-2px);
+}
+
+.waze-submit-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.waze-submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ─── Spinner ─── */
+.waze-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2.5px solid rgba(93, 66, 0, 0.2);
+    border-top-color: #5D4200;
+    border-radius: 50%;
+    animation: wazeSpin 0.7s linear infinite;
+}
+
+@keyframes wazeSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* ─── Switch Mode Links ─── */
+.waze-switch-mode {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #4A6B7D;
+    border-top: 1.5px solid #E0ECF2;
+    padding-top: 1rem;
+    margin-top: 0.3rem;
+}
+
+.waze-switch-mode button {
+    background: none;
+    border: none;
+    color: #0096C7;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+    text-decoration: none;
+    transition: all 0.2s;
+    border-radius: 6px;
+}
+
+.waze-switch-mode button:hover {
+    color: #0077B6;
+    background: rgba(0, 150, 199, 0.08);
+}
+
+.waze-switch-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1.5px solid #E0ECF2;
+    padding-top: 1rem;
+    margin-top: 0.3rem;
+}
+
+.waze-switch-link {
+    background: none;
+    border: none;
+    color: #6B8DA0;
+    font-size: 0.82rem;
+    cursor: pointer;
+    padding: 0.15rem 0.3rem;
+    text-decoration: none;
+    transition: all 0.2s;
+    border-radius: 6px;
+}
+
+.waze-switch-link:hover {
+    color: #0D2B3E;
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.waze-resend-btn {
+    background: none;
+    border: none;
+    color: #0096C7;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.15rem 0.3rem;
+    transition: all 0.2s;
+    border-radius: 6px;
+}
+
+.waze-resend-btn:hover:not(.disabled) {
+    color: #0077B6;
+    background: rgba(0, 150, 199, 0.06);
+}
+
+.waze-resend-btn.disabled {
+    color: #B0C4D8;
+    cursor: not-allowed;
 }
 
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
-    .login-page-root {
+    .waze-login-root {
         padding: 1rem;
         align-items: flex-start;
-        padding-top: 3rem;
+        padding-top: 2rem;
     }
 
-    .login-page-container {
+    .waze-login-container {
         flex-direction: column;
         width: 100%;
         max-width: 420px;
         min-height: auto;
+        border-radius: 20px;
     }
 
-    .login-page-branding {
+    .waze-login-left {
         width: 100%;
         padding: 2rem 1.5rem;
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     }
 
-    .login-brand-title {
-        font-size: 1.4rem;
+    .waze-brand-title {
+        font-size: 1.5rem;
     }
 
-    .login-car-wrapper {
-        width: 240px;
-        height: 155px;
+    .waze-road-scene {
+        height: 120px;
     }
 
-    .login-page-form {
+    .waze-login-right {
         padding: 2rem 1.5rem;
+    }
+
+    .waze-form-inner {
+        max-width: 100%;
     }
 }

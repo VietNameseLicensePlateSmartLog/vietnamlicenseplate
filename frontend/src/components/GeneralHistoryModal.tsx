@@ -204,10 +204,11 @@ export default function GeneralHistoryModal({ isOpen, onClose }: GeneralHistoryM
                     <div style={{ flex: 1, minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', overflow: 'hidden', backgroundColor: '#000' }}>
                       {selectedItem.image_path ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img 
-                          src={selectedItem.image_path} 
-                          alt="Ảnh chụp biển số xe" 
-                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        <img
+                          loading="lazy"
+                          src={selectedItem.image_path}
+                          alt="Ảnh chụp biển số xe"
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         />
                       ) : (
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Không có ảnh chụp</div>

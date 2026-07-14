@@ -10,3 +10,4 @@ pydantic>=2.0
 pydantic-settings
 sqlalchemy
 psycopg2-binary
+cloudinary

@@ -373,6 +373,22 @@ tr:hover td {
   box-shadow: 0 0 0 2px var(--primary-glow);
 }
 
+/* Date input — dark calendar picker */
+.form-group input[type="date"] {
+  color-scheme: dark;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(48%) sepia(79%) saturate(2500%) hue-rotate(223deg) brightness(100%) contrast(105%);
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 .form-actions {
   display: flex;
   gap: 10px;

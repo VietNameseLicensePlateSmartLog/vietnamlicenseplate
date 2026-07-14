@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
+import UserActivityModal from '@/components/admin/UserActivityModal';
 
 interface UserData {
   id: number;
@@ -30,6 +31,9 @@ export default function UsersManagement() {
   // Delete confirm
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Activity modal
+  const [activityModalUser, setActivityModalUser] = useState<UserData | null>(null);
 
   // Role change loading
   const [roleLoading, setRoleLoading] = useState<{ [key: number]: boolean }>({});
@@ -248,6 +252,19 @@ export default function UsersManagement() {
                         ) : (
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                             <button
+                              onClick={() => setActivityModalUser(user)}
+                              title="Xem lịch sử hoạt động"
+                              style={{
+                                backgroundColor: 'rgba(96, 165, 250, 0.15)',
+                                border: '1px solid rgba(96, 165, 250, 0.3)',
+                                color: '#93c5fd', padding: '5px 10px', borderRadius: '6px',
+                                cursor: 'pointer', fontSize: '0.8rem',
+                                display: 'inline-flex', alignItems: 'center', gap: '4px'
+                              }}
+                            >
+                              <i className="fa-solid fa-clock-rotate-left"></i>
+                            </button>
+                            <button
                               onClick={() => handleToggleActive(user.id)}
                               disabled={isChanging}
                               style={{
@@ -381,6 +398,17 @@ export default function UsersManagement() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ===== MODAL: LỊCH SỬ HOẠT ĐỘNG ===== */}
+      {activityModalUser && (
+        <UserActivityModal
+          isOpen={!!activityModalUser}
+          onClose={() => setActivityModalUser(null)}
+          userId={activityModalUser.id}
+          username={activityModalUser.username}
+          email={activityModalUser.email}
+        />
       )}
     </>
   );

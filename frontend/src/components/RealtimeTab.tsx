@@ -2,14 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import SnapshotModal from './SnapshotModal';
 import { API_BASE } from '@/lib/api';
-
-interface Region {
-  id: number;
-  name: string;
-  location: string | null;
-}
+import SnapshotModal from './SnapshotModal';
 
 interface PlateResult {
   bbox: number[];
@@ -60,14 +54,8 @@ export default function RealtimeTab() {
   const [placeholderContent, setPlaceholderContent] = useState<'idle' | 'connecting'>('idle');
   const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([]);
   const [modalRecord, setModalRecord] = useState<HistoryRecord | null>(null);
-
-  const [regions, setRegions] = useState<Region[]>([]);
-  const [selectedRegionId, setSelectedRegionId] = useState<string>('');
-  const selectedRegionIdRef = useRef('');
-
-  useEffect(() => {
-    selectedRegionIdRef.current = selectedRegionId;
-  }, [selectedRegionId]);
+  const [systemCameras, setSystemCameras] = useState<{ id: number; name: string }[]>([]);
+  const [selectedSystemCameraId, setSelectedSystemCameraId] = useState<number | null>(null);
 
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
   const realtimeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -114,25 +102,17 @@ export default function RealtimeTab() {
   // Load cameras khi component mount — tự động xin quyền nếu chưa có
   useEffect(() => {
     loadCameras();
-    loadRegions();
   }, []);
 
-  async function loadRegions() {
-    try {
-      const res = await fetch(`${API_BASE}/regions`);
-      if (res.ok) {
-        const data = await res.json();
-        setRegions(data);
-        if (data.length > 0) {
-          setSelectedRegionId(String(data[0].id));
-        }
-      }
-    } catch (err) {
-      console.error('Không thể tải danh sách phân vùng camera:', err);
-    }
-  }
+  // Load danh sách system cameras từ backend
+  useEffect(() => {
+    fetch(`${API_BASE}/cameras`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setSystemCameras(Array.isArray(data) ? data.map((c: any) => ({ id: c.id, name: c.name })) : []))
+      .catch(() => {});
+  }, []);
 
-  async function loadCameras() {
+  async function loadCameras(): Promise<MediaDeviceInfo[]> {
     try {
       // Bước1: Thử enumerate không xin quyền
       let devices = await navigator.mediaDevices.enumerateDevices();
@@ -156,8 +136,10 @@ export default function RealtimeTab() {
       if (videoDevices.length > 0 && !selectedDeviceId) {
         setSelectedDeviceId(videoDevices[0].deviceId);
       }
+      return videoDevices;
     } catch (err) {
       console.warn('Không thể liệt kê thiết bị camera:', err);
+      return [];
     }
   }
 
@@ -215,7 +197,9 @@ export default function RealtimeTab() {
       ctx.lineWidth = 4;
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-      const label = `${plate.text} (${(plate.conf * 100).toFixed(2)}%)`;
+      // Chỉ hiển thị text, không hiển thị confidence lúc real-time
+      // Confidence chỉ tính khi biển biến mất (finalize)
+      const label = `${plate.text}`;
       ctx.font = 'bold 16px Outfit, Inter, Arial';
       const textWidth = ctx.measureText(label).width;
 
@@ -252,9 +236,8 @@ export default function RealtimeTab() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const base64Data = canvas.toDataURL('image/jpeg', 0.6);
 
-    const rId = selectedRegionIdRef.current ? parseInt(selectedRegionIdRef.current, 10) : null;
-    sendFrame(base64Data, 0.5, 0.5, 0.3, rId);
-  }, [sendFrame]);
+    sendFrame(base64Data, 0.5, 0.5, 0.3, null, selectedSystemCameraId);
+  }, [sendFrame, selectedSystemCameraId]);
 
   // Sync ref để handleResults/handleConnected có thể gọi qua ref
   sendSingleFrameRef.current = sendSingleFrame;
@@ -367,27 +350,30 @@ export default function RealtimeTab() {
 
   // Bắt đầu camera
   async function startCamera() {
-    // Nếu chưa có camera nào, thử load lại
-    if (cameras.length === 0) {
-      await loadCameras();
-      if (cameras.length === 0) {
+    // Nếu chưa có camera nào, thử load lại — dùng return value để tránh stale state
+    let devices = cameras;
+    if (devices.length === 0) {
+      devices = await loadCameras();
+      if (devices.length === 0) {
         alert('Không tìm thấy camera nào.\n\nKiểm tra:\n1. Camera đã kết nối chưa?\n2. Đã cho phép quyền camera ở thanh địa chỉ?\n3. Không có app nào khác đang dùng camera?');
         return;
       }
     }
 
+    // Chọn device ID: ưu tiên selectedDeviceId, nếu không có thì lấy device đầu tiên
+    const deviceId = selectedDeviceId || devices[0].deviceId;
     const constraints = {
-      video: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true,
+      video: { deviceId: { exact: deviceId } },
     };
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       cameraStreamRef.current = stream;
 
-      // Sau khi được cấp quyền, cập nhật lại danh sách camera (để lấy nhãn đầy đủ)
+      // Cập nhật lại danh sách camera (để lấy nhãn đầy đủ sau khi có quyền)
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+        const allDevices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = allDevices.filter((d) => d.kind === 'videoinput');
         if (videoDevices.length > 0) {
           setCameras(videoDevices);
         }
@@ -399,13 +385,27 @@ export default function RealtimeTab() {
         webcamVideoRef.current.srcObject = stream;
       }
 
+      // Hiển thị spinner chờ video load
       setShowPlaceholder(true);
       setPlaceholderContent('connecting');
       setIsStreaming(true);
       isStreamingRef.current = true;
 
-      // Connect WebSocket - hook sẽ gọi onConnected khi mở thành công,
-      // rồi onResults sẽ tự chain frame tiếp theo
+      // Ẩn placeholder ngay khi video có data (không chờ WebSocket)
+      const videoEl = webcamVideoRef.current;
+      if (videoEl) {
+        const hidePlaceholderOnVideoReady = () => {
+          setShowPlaceholder(false);
+        };
+        // Dùng both events để cover edge cases
+        videoEl.addEventListener('loadeddata', hidePlaceholderOnVideoReady, { once: true });
+        // Fallback: nếu video đã sẵn sàng trước khi event fire
+        if (videoEl.readyState >= 2) {
+          setShowPlaceholder(false);
+        }
+      }
+
+      // Connect WebSocket — bắt đầu gửi frame khi kết nối thành công
       connect();
 
       startLocalDrawingLoop();
@@ -557,29 +557,27 @@ export default function RealtimeTab() {
                     )}
                   </select>
                 </div>
-                <div className="form-group" style={{ marginTop: '1.2rem', marginBottom: 0 }}>
-                  <label htmlFor="region-select" className="form-label" style={{ fontSize: '0.85rem' }}>
-                    <i className="fa-solid fa-map-location-dot" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}></i>
-                    Vị trí lắp đặt Camera (Phân vùng):
-                  </label>
-                  <select
-                    id="region-select"
-                    className="form-select"
-                    value={selectedRegionId}
-                    onChange={(e) => setSelectedRegionId(e.target.value)}
-                    disabled={isStreaming}
-                  >
-                    {regions.length === 0 ? (
-                      <option value="">Không tìm thấy phân vùng nào</option>
-                    ) : (
-                      regions.map((reg) => (
-                        <option key={reg.id} value={reg.id}>
-                          {reg.name} {reg.location ? `(${reg.location})` : ''}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
+
+                {/* Chọn camera IP (system camera) để gắn với kết quả nhận diện */}
+                {systemCameras.length > 0 && (
+                  <div className="form-group" style={{ margin: 0, marginTop: '1rem' }}>
+                    <label htmlFor="system-camera-select" className="form-label" style={{ fontSize: '0.85rem' }}>
+                      <i className="fa-solid fa-video" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}></i>
+                      Gắn với Camera IP:
+                    </label>
+                    <select
+                      id="system-camera-select"
+                      className="form-select"
+                      value={selectedSystemCameraId ?? ''}
+                      onChange={(e) => setSelectedSystemCameraId(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">Không gắn camera</option>
+                      {systemCameras.map(cam => (
+                        <option key={cam.id} value={cam.id}>{cam.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -4,9 +4,16 @@ import { useState, useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
 
 interface RegionStat {
-  region: string;
-  count: number;
+  name: string;
+  total_detections: number;
+  avg_confidence: number;
 }
+
+// Bảng màu cho các cột bar
+const BAR_COLORS = [
+  '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444',
+  '#ec4899', '#6366f1', '#14b8a6', '#f97316', '#84cc16', '#a855f7'
+];
 
 export default function VariableStats() {
   const [stats, setStats] = useState<RegionStat[]>([]);
@@ -41,8 +48,8 @@ export default function VariableStats() {
     );
   }
 
-  const maxCount = stats.length > 0 ? Math.max(...stats.map(s => s.count)) : 1;
-  const totalCount = stats.reduce((acc, curr) => acc + curr.count, 0);
+  const totalCount = stats.reduce((acc, curr) => acc + curr.total_detections, 0);
+  const maxCount = stats.length > 0 ? Math.max(...stats.map(s => s.total_detections), 1) : 1;
 
   return (
     <>
@@ -62,79 +69,108 @@ export default function VariableStats() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-        {/* Bảng chi tiết */}
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-          <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Danh sách phân vùng</h3>
-          </div>
-          <table style={{ border: 'none' }}>
-            <thead>
-              <tr>
-                <th>Tên phân vùng</th>
-                <th style={{ textAlign: 'right' }}>Số lượt nhận diện</th>
-                <th style={{ textAlign: 'right' }}>Tỷ lệ phần trăm</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.length === 0 ? (
-                <tr>
-                  <td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.4)' }}>
-                    Chưa có dữ liệu phân vùng
-                  </td>
-                </tr>
-              ) : (
-                stats.map((item, idx) => {
-                  const percentage = totalCount > 0 ? (item.count / totalCount) * 100 : 0;
-                  return (
-                    <tr key={idx}>
-                      <td style={{ fontWeight: 600 }}><i className="fa-solid fa-camera-retro" style={{ color: 'var(--primary)', marginRight: '8px' }}></i> {item.region || 'Không xác định'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{item.count}</td>
-                      <td style={{ textAlign: 'right', color: 'rgba(255,255,255,0.6)' }}>{percentage.toFixed(1)}%</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+      {/* Biểu đồ cột đứng */}
+      <div className="card" style={{ padding: '24px', marginBottom: '20px' }}>
+        <div style={{ marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Biểu đồ thống kê</h3>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>
+            Tổng số lượt ghi nhận: <strong>{totalCount}</strong> phương tiện
+          </p>
         </div>
 
-        {/* Trực quan hóa dạng thanh ngang */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '20px' }}>
-          <div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '5px' }}>Biểu đồ mật độ</h3>
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Tổng số lượt ghi nhận: <strong>{totalCount}</strong> phương tiện</p>
+        {stats.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: 'rgba(255,255,255,0.3)' }}>Không có dữ liệu</div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', height: '280px', padding: '0 8px' }}>
+            {stats.map((item, idx) => {
+              const barHeight = maxCount > 0 ? (item.total_detections / maxCount) * 100 : 0;
+              const percentage = totalCount > 0 ? (item.total_detections / totalCount) * 100 : 0;
+              const color = BAR_COLORS[idx % BAR_COLORS.length];
+              return (
+                <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', minWidth: 0 }}>
+                  {/* Số liệu trên cột */}
+                  <div style={{ marginBottom: '6px', textAlign: 'center' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', color }}>{item.total_detections}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)' }}>{percentage.toFixed(1)}%</div>
+                  </div>
+                  {/* Thanh bar */}
+                  <div
+                    style={{
+                      width: '100%',
+                      maxWidth: '80px',
+                      height: `${Math.max(barHeight, 2)}%`,
+                      background: `linear-gradient(180deg, ${color}, ${color}88)`,
+                      borderRadius: '6px 6px 2px 2px',
+                      transition: 'height 0.8s ease-out',
+                      minHeight: '4px',
+                    }}
+                  />
+                  {/* Tên region */}
+                  <div
+                    style={{
+                      marginTop: '10px',
+                      fontSize: '0.78rem',
+                      color: 'rgba(255,255,255,0.6)',
+                      textAlign: 'center',
+                      lineHeight: 1.3,
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {item.name || 'Không xác định'}
+                  </div>
+                </div>
+              );
+            })}
           </div>
+        )}
+      </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', marginTop: '10px' }}>
+      {/* Bảng chi tiết bên dưới */}
+      <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+        <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Chi tiết theo phân vùng</h3>
+        </div>
+        <table style={{ border: 'none' }}>
+          <thead>
+            <tr>
+              <th style={{ width: '40px', textAlign: 'center' }}>#</th>
+              <th>Tên phân vùng</th>
+              <th style={{ textAlign: 'right' }}>Số lượt nhận diện</th>
+              <th style={{ textAlign: 'right' }}>Tỷ lệ phần trăm</th>
+              <th style={{ textAlign: 'right' }}>Độ tin cậy TB</th>
+            </tr>
+          </thead>
+          <tbody>
             {stats.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '20px', color: 'rgba(255,255,255,0.3)' }}>Không có dữ liệu</div>
+              <tr>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '30px', color: 'rgba(255,255,255,0.4)' }}>
+                  Chưa có dữ liệu phân vùng
+                </td>
+              </tr>
             ) : (
               stats.map((item, idx) => {
-                const widthPercentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+                const percentage = totalCount > 0 ? (item.total_detections / totalCount) * 100 : 0;
+                const color = BAR_COLORS[idx % BAR_COLORS.length];
                 return (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                      <span style={{ fontWeight: 500 }}>{item.region || 'Không xác định'}</span>
-                      <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{item.count} lượt</span>
-                    </div>
-                    <div style={{ height: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '5px', overflow: 'hidden' }}>
-                      <div 
-                        style={{ 
-                          height: '100%', 
-                          background: 'linear-gradient(90deg, var(--primary), #a5b4fc)', 
-                          width: `${widthPercentage}%`,
-                          borderRadius: '5px',
-                          transition: 'width 0.8s ease-out'
-                        }}
-                      />
-                    </div>
-                  </div>
+                  <tr key={idx}>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: color, display: 'inline-block' }}></div>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>
+                      <i className="fa-solid fa-camera-retro" style={{ color, marginRight: '8px' }}></i>
+                      {item.name || 'Không xác định'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{item.total_detections}</td>
+                    <td style={{ textAlign: 'right', color: 'rgba(255,255,255,0.6)' }}>{percentage.toFixed(1)}%</td>
+                    <td style={{ textAlign: 'right', color: item.avg_confidence >= 0.8 ? '#34d399' : '#fbbf24', fontWeight: 600 }}>
+                      {item.avg_confidence > 0 ? `${(item.avg_confidence * 100).toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
                 );
               })
             )}
-          </div>
-        </div>
+          </tbody>
+        </table>
       </div>
     </>
   );

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_BASE } from '@/lib/api';
-import AnimatedBackground from '@/components/AnimatedBackground';
 
 type FormMode = 'login' | 'register' | 'verify_otp' | 'forgot_password' | 'reset_password';
 
@@ -55,6 +54,11 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Máy chủ không phản hồi. Vui lòng thử lại sau.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -98,6 +102,11 @@ export default function LoginPage() {
         body: JSON.stringify({ username, email, password }),
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Máy chủ không phản hồi. Vui lòng thử lại sau.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -126,6 +135,11 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, otp }),
       });
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Máy chủ không phản hồi. Vui lòng thử lại sau.');
+      }
 
       const data = await response.json();
 
@@ -159,6 +173,11 @@ export default function LoginPage() {
         body: JSON.stringify({ username }),
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Máy chủ không phản hồi. Vui lòng thử lại sau.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -186,6 +205,11 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username }),
       });
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Máy chủ không phản hồi. Vui lòng thử lại sau.');
+      }
 
       const data = await response.json();
 
@@ -222,6 +246,11 @@ export default function LoginPage() {
         body: JSON.stringify({ username, otp, new_password: newPassword }),
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Máy chủ không phản hồi. Vui lòng thử lại sau.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -253,6 +282,11 @@ export default function LoginPage() {
         body: JSON.stringify({ username }),
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Máy chủ không phản hồi. Vui lòng thử lại sau.');
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -269,144 +303,150 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="login-page-root">
-      <AnimatedBackground />
+    <div className="waze-login-root">
+      {/* ─── Floating Clouds ─── */}
+      <div className="waze-clouds">
+        <div className="waze-cloud waze-cloud-1">
+          <svg width="120" height="50" viewBox="0 0 120 50" fill="none">
+            <ellipse cx="60" cy="32" rx="50" ry="16" fill="#fff"/>
+            <ellipse cx="38" cy="24" rx="28" ry="18" fill="#fff"/>
+            <ellipse cx="78" cy="26" rx="24" ry="14" fill="#fff"/>
+            <ellipse cx="56" cy="18" rx="22" ry="14" fill="#fff"/>
+          </svg>
+        </div>
+        <div className="waze-cloud waze-cloud-2">
+          <svg width="100" height="42" viewBox="0 0 100 42" fill="none">
+            <ellipse cx="50" cy="28" rx="42" ry="13" fill="#fff"/>
+            <ellipse cx="32" cy="20" rx="22" ry="15" fill="#fff"/>
+            <ellipse cx="65" cy="22" rx="20" ry="12" fill="#fff"/>
+          </svg>
+        </div>
+        <div className="waze-cloud waze-cloud-3">
+          <svg width="80" height="36" viewBox="0 0 80 36" fill="none">
+            <ellipse cx="40" cy="24" rx="35" ry="11" fill="#fff"/>
+            <ellipse cx="26" cy="17" rx="18" ry="12" fill="#fff"/>
+            <ellipse cx="54" cy="18" rx="16" ry="10" fill="#fff"/>
+          </svg>
+        </div>
+        <div className="waze-cloud waze-cloud-4">
+          <svg width="90" height="38" viewBox="0 0 90 38" fill="none">
+            <ellipse cx="45" cy="26" rx="38" ry="12" fill="#fff"/>
+            <ellipse cx="30" cy="18" rx="20" ry="13" fill="#fff"/>
+            <ellipse cx="60" cy="20" rx="18" ry="11" fill="#fff"/>
+          </svg>
+        </div>
+        <div className="waze-cloud waze-cloud-5">
+          <svg width="70" height="32" viewBox="0 0 70 32" fill="none">
+            <ellipse cx="35" cy="22" rx="30" ry="10" fill="#fff"/>
+            <ellipse cx="22" cy="15" rx="16" ry="11" fill="#fff"/>
+            <ellipse cx="48" cy="16" rx="14" ry="9" fill="#fff"/>
+          </svg>
+        </div>
+      </div>
 
-      <div className="login-page-container">
+      <div className="waze-login-container">
         {/* ─── Left Branding Panel ─── */}
-        <div className="login-page-branding">
-          <div className="login-branding-content">
-            <div className="login-brand-logo">
-              <i className="fa-solid fa-car-side"></i>
-              <span>Vietnam LPR</span>
-            </div>
-            <div className="login-brand-subtitle">HỆ THỐNG AI</div>
-            <h1 className="login-brand-title">NHẬN DIỆN BIỂN SỐ</h1>
-            <p className="login-brand-desc">
-              Phân tích hình ảnh, video và dữ liệu camera thời gian thực với độ chính xác cao dựa trên mô hình YOLOv8.
-            </p>
+        <div className="waze-login-left">
+          <div className="waze-brand-logo">
+            <i className="fa-solid fa-car-side"></i>
+            <span>Vietnam LPR</span>
+          </div>
+          <h1 className="waze-brand-title">NHẬN DIỆN<br/>BIỂN SỐ XE</h1>
+          <p className="waze-brand-desc">
+            Hệ thống AI nhận diện tự động biển số xe từ camera thời gian thực, ảnh và video với độ chính xác cao.
+          </p>
 
-            {/* Animated Car with Laser Scan */}
-            <div className="login-car-scene">
-              <div className="login-car-wrapper">
-                <svg className="login-car-svg" viewBox="0 0 340 220" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  {/* Ground shadow */}
-                  <ellipse cx="170" cy="205" rx="130" ry="8" fill="rgba(0,0,0,0.3)"/>
+          {/* ─── Animated Road Scene ─── */}
+          <div className="waze-road-scene">
+            <svg className="waze-road-svg" viewBox="0 0 360 160" fill="none">
+              {/* Road */}
+              <path d="M-20,120 C60,120 100,55 180,55 C260,55 300,120 380,120"
+                    stroke="rgba(255,255,255,0.35)" strokeWidth="28" strokeLinecap="round" fill="none"/>
+              <path d="M-20,120 C60,120 100,55 180,55 C260,55 300,120 380,120"
+                    stroke="rgba(255,255,255,0.15)" strokeWidth="2" strokeDasharray="8 8" fill="none"/>
 
-                  {/* ── Wheels ── */}
-                  <circle cx="80" cy="185" r="22" fill="#1a1a1a" stroke="#333" strokeWidth="2"/>
-                  <circle cx="80" cy="185" r="14" fill="#3a3a3a"/>
-                  <circle cx="80" cy="185" r="6" fill="#666"/>
-                  <circle cx="260" cy="185" r="22" fill="#1a1a1a" stroke="#333" strokeWidth="2"/>
-                  <circle cx="260" cy="185" r="14" fill="#3a3a3a"/>
-                  <circle cx="260" cy="185" r="6" fill="#666"/>
+              {/* Car 1 - Yellow taxi */}
+              <g className="waze-car-group">
+                <rect x="-16" y="-10" width="32" height="16" rx="5" fill="#FFD93D" stroke="#E6B800" strokeWidth="1"/>
+                <rect x="-12" y="-16" width="20" height="10" rx="4" fill="#FFE566" stroke="#E6B800" strokeWidth="0.8"/>
+                <rect x="-9" y="-14" width="14" height="7" rx="2" fill="rgba(135,206,250,0.5)"/>
+                <circle cx="-8" cy="8" r="4" fill="#333"/>
+                <circle cx="8" cy="8" r="4" fill="#333"/>
+                <rect x="-14" y="-4" width="5" height="3" rx="1" fill="#FFF" opacity="0.8"/>
+                <rect x="9" y="-4" width="5" height="3" rx="1" fill="#FFF" opacity="0.8"/>
+              </g>
 
-                  {/* ── Body lower (bumper area) ── */}
-                  <rect x="35" y="135" width="270" height="40" rx="12" fill="#E8A800"/>
+              {/* Car 2 - Red car */}
+              <g className="waze-car-group-2">
+                <rect x="-14" y="-9" width="28" height="14" rx="5" fill="#FF6B6B" stroke="#E05555" strokeWidth="1"/>
+                <rect x="-10" y="-14" width="18" height="9" rx="3" fill="#FF8A8A" stroke="#E05555" strokeWidth="0.8"/>
+                <rect x="-7" y="-12" width="12" height="6" rx="2" fill="rgba(135,206,250,0.5)"/>
+                <circle cx="-7" cy="7" r="3.5" fill="#333"/>
+                <circle cx="7" cy="7" r="3.5" fill="#333"/>
+                <rect x="-12" y="-3" width="4" height="2.5" rx="1" fill="#FFF" opacity="0.8"/>
+                <rect x="8" y="-3" width="4" height="2.5" rx="1" fill="#FFF" opacity="0.8"/>
+              </g>
 
-                  {/* ── Body main ── */}
-                  <rect x="42" y="100" width="256" height="42" rx="10" fill="#F5C518" stroke="#D4A800" strokeWidth="1.5"/>
-
-                  {/* ── Cabin ── */}
-                  <path d="M88 100 L110 58 Q116 46 132 42 L208 42 Q224 46 230 58 L252 100 Z" fill="#FFD940" stroke="#D4A800" strokeWidth="1.5"/>
-
-                  {/* ── Roof ── */}
-                  <path d="M110 58 Q116 44 136 38 L204 38 Q224 44 230 58 Z" fill="#FFD940" stroke="#D4A800" strokeWidth="1"/>
-
-                  {/* ── Windshield ── */}
-                  <path d="M96 98 L116 56 Q118 50 128 48 L212 48 Q222 50 224 56 L244 98 Z" fill="rgba(120,200,255,0.3)" stroke="rgba(100,200,255,0.5)" strokeWidth="1.5"/>
-                  {/* Glass reflection */}
-                  <path d="M108 92 L124 58 L145 58 L130 92 Z" fill="rgba(255,255,255,0.08)"/>
-                  {/* Window divider */}
-                  <line x1="170" y1="46" x2="170" y2="98" stroke="rgba(100,200,255,0.35)" strokeWidth="1"/>
-
-                  {/* ── Headlight left ── */}
-                  <rect x="42" y="110" width="38" height="20" rx="7" fill="#FFF" opacity="0.95"/>
-                  <rect x="46" y="113" width="30" height="14" rx="5" fill="#FFFDE0"/>
-                  <rect x="50" y="116" width="22" height="8" rx="4" fill="#FFF" opacity="0.6"/>
-                  {/* ── Headlight right ── */}
-                  <rect x="260" y="110" width="38" height="20" rx="7" fill="#FFF" opacity="0.95"/>
-                  <rect x="264" y="113" width="30" height="14" rx="5" fill="#FFFDE0"/>
-                  <rect x="268" y="116" width="22" height="8" rx="4" fill="#FFF" opacity="0.6"/>
-
-                  {/* ── Grille ── */}
-                  <rect x="138" y="120" width="64" height="16" rx="5" fill="#C49A00" stroke="#B08A00" strokeWidth="0.8"/>
-                  <line x1="150" y1="121" x2="150" y2="135" stroke="#B08A00" strokeWidth="0.7"/>
-                  <line x1="162" y1="121" x2="162" y2="135" stroke="#B08A00" strokeWidth="0.7"/>
-                  <line x1="178" y1="121" x2="178" y2="135" stroke="#B08A00" strokeWidth="0.7"/>
-                  <line x1="190" y1="121" x2="190" y2="135" stroke="#B08A00" strokeWidth="0.7"/>
-
-                  {/* ── Front bumper ── */}
-                  <rect x="55" y="150" width="230" height="12" rx="6" fill="#D4A800"/>
-
-                  {/* ── License plate ── */}
-                  <rect x="125" y="153" width="90" height="28" rx="4" fill="#FFF" stroke="#DDD" strokeWidth="1"/>
-                  <text x="170" y="172" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#003366" fontFamily="monospace">30F-181.12</text>
-
-                  {/* ── Detection bounding box (dashed) ── */}
-                  <rect x="120" y="148" width="100" height="38" rx="4" fill="none" stroke="rgba(0,255,136,0.5)" strokeWidth="1.5" strokeDasharray="4 3"/>
-
-                  {/* ── Corner brackets on plate ── */}
-                  <path d="M122 153 L122 149 L128 149" fill="none" stroke="#00ff88" strokeWidth="1.5"/>
-                  <path d="M218 153 L218 149 L212 149" fill="none" stroke="#00ff88" strokeWidth="1.5"/>
-                  <path d="M122 187 L122 191 L128 191" fill="none" stroke="#00ff88" strokeWidth="1.5"/>
-                  <path d="M218 187 L218 191 L212 191" fill="none" stroke="#00ff88" strokeWidth="1.5"/>
-                </svg>
-
-                {/* Laser scan line — sweeps top to bottom */}
-                <div className="login-laser-beam"></div>
-                <div className="login-laser-glow"></div>
-
-                {/* Scan result popup */}
-                <div className="login-scan-result">
-                  <div className="login-scan-badge">
-                    <i className="fa-solid fa-check"></i>
-                  </div>
-                  <span>30F-181.12</span>
-                </div>
-              </div>
-
-              {/* Tech feature tags */}
-              <div className="login-car-tags">
-                <div className="login-car-tag">
-                  <i className="fa-solid fa-microchip"></i>
-                  <span>YOLOv8</span>
-                </div>
-                <div className="login-car-tag">
-                  <i className="fa-solid fa-bolt"></i>
-                  <span>Realtime</span>
-                </div>
-              </div>
-            </div>
+              {/* Car 3 - Green car */}
+              <g className="waze-car-group-3">
+                <rect x="-12" y="-8" width="24" height="13" rx="4" fill="#4CAF50" stroke="#3D8B40" strokeWidth="1"/>
+                <rect x="-8" y="-13" width="16" height="8" rx="3" fill="#66BB6A" stroke="#3D8B40" strokeWidth="0.8"/>
+                <rect x="-6" y="-11" width="10" height="5" rx="2" fill="rgba(135,206,250,0.5)"/>
+                <circle cx="-6" cy="6" r="3" fill="#333"/>
+                <circle cx="6" cy="6" r="3" fill="#333"/>
+                <rect x="-10" y="-2" width="3.5" height="2" rx="1" fill="#FFF" opacity="0.8"/>
+                <rect x="7" y="-2" width="3.5" height="2" rx="1" fill="#FFF" opacity="0.8"/>
+              </g>
+            </svg>
           </div>
 
-          <div className="login-branding-grid"></div>
+          {/* ─── Feature Tags ─── */}
+          <div className="waze-tags">
+            <div className="waze-tag">
+              <i className="fa-solid fa-microchip"></i>
+              <span>YOLOv8</span>
+            </div>
+            <div className="waze-tag">
+              <i className="fa-solid fa-bolt"></i>
+              <span>Realtime</span>
+            </div>
+            <div className="waze-tag">
+              <i className="fa-solid fa-bullseye"></i>
+              <span>Accurate</span>
+            </div>
+          </div>
         </div>
 
         {/* ─── Right Form Panel ─── */}
-        <div className="login-page-form">
-          <div className="login-form-inner">
+        <div className="waze-login-right">
+          <div className="waze-form-inner">
 
-            {/* LOGIN MODE */}
+            {/* ═══ LOGIN MODE ═══ */}
             {mode === 'login' && (
               <>
-                <h2 className="login-form-title">Đăng nhập hệ thống</h2>
+                <div className="waze-form-header">
+                  <div className="waze-form-icon">
+                    <i className="fa-solid fa-right-to-bracket"></i>
+                  </div>
+                  <h2 className="waze-form-title">Đăng nhập</h2>
+                </div>
+                <p className="waze-form-subtitle">Chào mừng bạn đến với hệ thống nhận diện biển số</p>
 
-                <form onSubmit={handleLoginSubmit} className="login-form">
+                <form onSubmit={handleLoginSubmit} className="waze-form">
                   {successMsg && (
-                    <div className="login-alert login-alert-success">
+                    <div className="waze-alert waze-alert-success">
                       <i className="fa-solid fa-circle-check"></i>
                       <span>{successMsg}</span>
                     </div>
                   )}
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-regular fa-user"></i> Tài khoản đăng nhập:
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-regular fa-user"></i> Tài khoản
                     </label>
                     <input
                       type="text"
-                      className="login-input"
+                      className="waze-input"
                       placeholder="Nhập tên tài khoản"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
@@ -415,14 +455,14 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-solid fa-lock"></i> Mật khẩu:
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-solid fa-lock"></i> Mật khẩu
                     </label>
-                    <div className="login-password-wrapper">
+                    <div className="waze-password-wrapper">
                       <input
                         type={showPassword ? 'text' : 'password'}
-                        className="login-input"
+                        className="waze-input"
                         placeholder="Nhập mật khẩu"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -431,7 +471,7 @@ export default function LoginPage() {
                       />
                       <button
                         type="button"
-                        className="login-password-toggle"
+                        className="waze-password-toggle"
                         onClick={() => setShowPassword(!showPassword)}
                         tabIndex={-1}
                       >
@@ -441,13 +481,13 @@ export default function LoginPage() {
                   </div>
 
                   {error && (
-                    <div className="login-alert login-alert-error">
+                    <div className="waze-alert waze-alert-error">
                       <i className="fa-solid fa-triangle-exclamation"></i>
                       <span>{error}</span>
                     </div>
                   )}
 
-                  <div className="login-forgot-link">
+                  <div className="waze-forgot-link">
                     <button
                       type="button"
                       onClick={() => { setMode('forgot_password'); setError(''); setSuccessMsg(''); }}
@@ -456,18 +496,21 @@ export default function LoginPage() {
                     </button>
                   </div>
 
-                  <button type="submit" className="login-submit-btn" disabled={isLoading}>
+                  <button type="submit" className="waze-submit-btn" disabled={isLoading}>
                     {isLoading ? (
                       <>
-                        <div className="small-spinner" style={{ marginRight: '0.5rem' }}></div>
+                        <div className="waze-spinner"></div>
                         Đang đăng nhập...
                       </>
                     ) : (
-                      'Đăng nhập'
+                      <>
+                        <i className="fa-solid fa-right-to-bracket"></i>
+                        Đăng nhập
+                      </>
                     )}
                   </button>
 
-                  <div className="login-switch-mode">
+                  <div className="waze-switch-mode">
                     <span>Chưa có tài khoản? </span>
                     <button
                       type="button"
@@ -480,19 +523,25 @@ export default function LoginPage() {
               </>
             )}
 
-            {/* REGISTER MODE */}
+            {/* ═══ REGISTER MODE ═══ */}
             {mode === 'register' && (
               <>
-                <h2 className="login-form-title">Đăng ký tài khoản</h2>
+                <div className="waze-form-header">
+                  <div className="waze-form-icon">
+                    <i className="fa-solid fa-user-plus"></i>
+                  </div>
+                  <h2 className="waze-form-title">Đăng ký tài khoản</h2>
+                </div>
+                <p className="waze-form-subtitle">Tạo tài khoản mới để sử dụng hệ thống</p>
 
-                <form onSubmit={handleRegisterSubmit} className="login-form">
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-regular fa-user"></i> Tên tài khoản đăng ký:
+                <form onSubmit={handleRegisterSubmit} className="waze-form">
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-regular fa-user"></i> Tên tài khoản
                     </label>
                     <input
                       type="text"
-                      className="login-input"
+                      className="waze-input"
                       placeholder="Nhập tài khoản đăng nhập mới"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
@@ -501,14 +550,14 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-regular fa-envelope"></i> Gmail nhận OTP kích hoạt:
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-regular fa-envelope"></i> Gmail nhận OTP
                     </label>
                     <input
                       type="email"
-                      className="login-input"
-                      placeholder="nhap_gmail_cua_ban@gmail.com"
+                      className="waze-input"
+                      placeholder="example@gmail.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -516,14 +565,14 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-solid fa-lock"></i> Mật khẩu:
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-solid fa-lock"></i> Mật khẩu
                     </label>
-                    <div className="login-password-wrapper">
+                    <div className="waze-password-wrapper">
                       <input
                         type={showPassword ? 'text' : 'password'}
-                        className="login-input"
+                        className="waze-input"
                         placeholder="Nhập mật khẩu mới"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -532,7 +581,7 @@ export default function LoginPage() {
                       />
                       <button
                         type="button"
-                        className="login-password-toggle"
+                        className="waze-password-toggle"
                         onClick={() => setShowPassword(!showPassword)}
                         tabIndex={-1}
                       >
@@ -541,14 +590,14 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-solid fa-lock"></i> Nhập lại mật khẩu:
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-solid fa-lock"></i> Nhập lại mật khẩu
                     </label>
-                    <div className="login-password-wrapper">
+                    <div className="waze-password-wrapper">
                       <input
                         type={showConfirmPassword ? 'text' : 'password'}
-                        className="login-input"
+                        className="waze-input"
                         placeholder="Xác nhận lại mật khẩu"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
@@ -557,7 +606,7 @@ export default function LoginPage() {
                       />
                       <button
                         type="button"
-                        className="login-password-toggle"
+                        className="waze-password-toggle"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                         tabIndex={-1}
                       >
@@ -567,24 +616,27 @@ export default function LoginPage() {
                   </div>
 
                   {error && (
-                    <div className="login-alert login-alert-error">
+                    <div className="waze-alert waze-alert-error">
                       <i className="fa-solid fa-triangle-exclamation"></i>
                       <span>{error}</span>
                     </div>
                   )}
 
-                  <button type="submit" className="login-submit-btn" disabled={isLoading}>
+                  <button type="submit" className="waze-submit-btn" disabled={isLoading}>
                     {isLoading ? (
                       <>
-                        <div className="small-spinner" style={{ marginRight: '0.5rem' }}></div>
+                        <div className="waze-spinner"></div>
                         Đang xử lý...
                       </>
                     ) : (
-                      'Đăng ký và gửi OTP kích hoạt'
+                      <>
+                        <i className="fa-solid fa-user-plus"></i>
+                        Đăng ký và gửi OTP kích hoạt
+                      </>
                     )}
                   </button>
 
-                  <div className="login-switch-mode">
+                  <div className="waze-switch-mode">
                     <span>Đã có tài khoản? </span>
                     <button
                       type="button"
@@ -597,14 +649,20 @@ export default function LoginPage() {
               </>
             )}
 
-            {/* VERIFY OTP MODE */}
+            {/* ═══ VERIFY OTP MODE ═══ */}
             {mode === 'verify_otp' && (
               <>
-                <h2 className="login-form-title">Xác thực tài khoản</h2>
+                <div className="waze-form-header">
+                  <div className="waze-form-icon">
+                    <i className="fa-solid fa-shield-halved"></i>
+                  </div>
+                  <h2 className="waze-form-title">Xác thực tài khoản</h2>
+                </div>
+                <p className="waze-form-subtitle">Nhập mã OTP đã gửi về Gmail của bạn</p>
 
-                <form onSubmit={handleVerifyOtpSubmit} className="login-form">
+                <form onSubmit={handleVerifyOtpSubmit} className="waze-form">
                   {otpSentMessage && otpSentMessage.includes('[Dev Mode]') ? (
-                    <div className="login-alert login-alert-warning">
+                    <div className="waze-alert waze-alert-warning">
                       <i className="fa-solid fa-terminal"></i>
                       <div>
                         <strong>Chế độ Development</strong>
@@ -612,21 +670,21 @@ export default function LoginPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="login-alert login-alert-info">
+                    <div className="waze-alert waze-alert-info">
                       <i className="fa-regular fa-paper-plane"></i>
                       <span>{otpSentMessage || 'Một mã xác thực đã được gửi về Gmail của bạn.'}</span>
                     </div>
                   )}
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-solid fa-key"></i> Nhập mã OTP xác thực (6 số):
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-solid fa-key"></i> Mã OTP (6 số)
                     </label>
                     <input
                       type="text"
                       maxLength={6}
                       pattern="\d{6}"
-                      className="login-input login-input-otp"
+                      className="waze-input waze-input-otp"
                       placeholder="------"
                       value={otp}
                       onChange={(e) => setOtp(e.target.value)}
@@ -636,62 +694,72 @@ export default function LoginPage() {
                   </div>
 
                   {error && (
-                    <div className="login-alert login-alert-error">
+                    <div className="waze-alert waze-alert-error">
                       <i className="fa-solid fa-triangle-exclamation"></i>
                       <span>{error}</span>
                     </div>
                   )}
 
-                  <button type="submit" className="login-submit-btn" disabled={isLoading}>
+                  <button type="submit" className="waze-submit-btn" disabled={isLoading}>
                     {isLoading ? (
                       <>
-                        <div className="small-spinner" style={{ marginRight: '0.5rem' }}></div>
+                        <div className="waze-spinner"></div>
                         Đang kích hoạt...
                       </>
                     ) : (
-                      'Kích hoạt tài khoản'
+                      <>
+                        <i className="fa-solid fa-shield-halved"></i>
+                        Kích hoạt tài khoản
+                      </>
                     )}
                   </button>
 
-                  <div className="login-switch-row">
+                  <div className="waze-switch-row">
                     <button
                       type="button"
-                      className="login-switch-link"
+                      className="waze-switch-link"
                       onClick={() => { setMode('register'); setError(''); setSuccessMsg(''); }}
                       disabled={isLoading}
                     >
-                      Quay lại đăng ký
+                      <i className="fa-solid fa-arrow-left"></i> Quay lại
                     </button>
                     <button
                       type="button"
-                      className={`login-resend-btn ${resendTimer > 0 ? 'disabled' : ''}`}
+                      className={`waze-resend-btn ${resendTimer > 0 ? 'disabled' : ''}`}
                       onClick={handleResendOtp}
                       disabled={resendTimer > 0 || isLoading}
                     >
-                      {resendTimer > 0 ? `Gửi lại OTP (${resendTimer}s)` : 'Gửi lại mã OTP'}
+                      {resendTimer > 0 ? `Gửi lại (${resendTimer}s)` : 'Gửi lại OTP'}
                     </button>
                   </div>
                 </form>
               </>
             )}
 
-            {/* FORGOT PASSWORD MODE */}
+            {/* ═══ FORGOT PASSWORD MODE ═══ */}
             {mode === 'forgot_password' && (
               <>
-                <h2 className="login-form-title">Khôi phục mật khẩu</h2>
+                <div className="waze-form-header">
+                  <div className="waze-form-icon">
+                    <i className="fa-solid fa-key"></i>
+                  </div>
+                  <h2 className="waze-form-title">Khôi phục mật khẩu</h2>
+                </div>
+                <p className="waze-form-subtitle">Nhập tài khoản để nhận mã OTP khôi phục</p>
 
-                <form onSubmit={handleForgotPasswordSubmit} className="login-form">
-                  <div className="login-alert login-alert-info">
-                    Nhập tài khoản đăng nhập của bạn. Hệ thống sẽ gửi một mã OTP khôi phục về hòm thư Gmail mà bạn đã liên kết với tài khoản này khi đăng ký.
+                <form onSubmit={handleForgotPasswordSubmit} className="waze-form">
+                  <div className="waze-alert waze-alert-info">
+                    <i className="fa-solid fa-circle-info"></i>
+                    <span>Hệ thống sẽ gửi mã OTP khôi phục về Gmail đã liên kết với tài khoản.</span>
                   </div>
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-regular fa-user"></i> Tài khoản của bạn:
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-regular fa-user"></i> Tài khoản của bạn
                     </label>
                     <input
                       type="text"
-                      className="login-input"
+                      className="waze-input"
                       placeholder="Nhập tên tài khoản cần lấy lại mật khẩu"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
@@ -701,43 +769,52 @@ export default function LoginPage() {
                   </div>
 
                   {error && (
-                    <div className="login-alert login-alert-error">
+                    <div className="waze-alert waze-alert-error">
                       <i className="fa-solid fa-triangle-exclamation"></i>
                       <span>{error}</span>
                     </div>
                   )}
 
-                  <button type="submit" className="login-submit-btn" disabled={isLoading}>
+                  <button type="submit" className="waze-submit-btn" disabled={isLoading}>
                     {isLoading ? (
                       <>
-                        <div className="small-spinner" style={{ marginRight: '0.5rem' }}></div>
+                        <div className="waze-spinner"></div>
                         Đang xử lý...
                       </>
                     ) : (
-                      'Gửi mã OTP qua Gmail'
+                      <>
+                        <i className="fa-solid fa-paper-plane"></i>
+                        Gửi mã OTP qua Gmail
+                      </>
                     )}
                   </button>
 
-                  <div className="login-switch-mode" style={{ borderTop: 'none', paddingTop: '0.5rem' }}>
+                  <div className="waze-switch-mode" style={{ borderTop: 'none', paddingTop: '0.5rem' }}>
                     <button
                       type="button"
                       onClick={() => { setMode('login'); setError(''); setSuccessMsg(''); }}
                     >
-                      Quay lại đăng nhập
+                      <i className="fa-solid fa-arrow-left"></i> Quay lại đăng nhập
                     </button>
                   </div>
                 </form>
               </>
             )}
 
-            {/* RESET PASSWORD MODE */}
+            {/* ═══ RESET PASSWORD MODE ═══ */}
             {mode === 'reset_password' && (
               <>
-                <h2 className="login-form-title">Đặt lại mật khẩu mới</h2>
+                <div className="waze-form-header">
+                  <div className="waze-form-icon">
+                    <i className="fa-solid fa-lock"></i>
+                  </div>
+                  <h2 className="waze-form-title">Đặt lại mật khẩu</h2>
+                </div>
+                <p className="waze-form-subtitle">Nhập mã OTP và mật khẩu mới</p>
 
-                <form onSubmit={handleResetPasswordSubmit} className="login-form">
+                <form onSubmit={handleResetPasswordSubmit} className="waze-form">
                   {otpSentMessage && otpSentMessage.includes('[Dev Mode]') ? (
-                    <div className="login-alert login-alert-warning">
+                    <div className="waze-alert waze-alert-warning">
                       <i className="fa-solid fa-terminal"></i>
                       <div>
                         <strong>Chế độ Development</strong>
@@ -745,21 +822,21 @@ export default function LoginPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="login-alert login-alert-info">
+                    <div className="waze-alert waze-alert-info">
                       <i className="fa-regular fa-paper-plane"></i>
                       <span>{otpSentMessage || 'Mã OTP đặt lại mật khẩu đã được gửi về Gmail của bạn.'}</span>
                     </div>
                   )}
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-solid fa-key"></i> Nhập mã OTP (6 số):
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-solid fa-key"></i> Mã OTP (6 số)
                     </label>
                     <input
                       type="text"
                       maxLength={6}
                       pattern="\d{6}"
-                      className="login-input login-input-otp"
+                      className="waze-input waze-input-otp"
                       placeholder="------"
                       value={otp}
                       onChange={(e) => setOtp(e.target.value)}
@@ -768,14 +845,14 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-solid fa-lock"></i> Mật khẩu mới:
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-solid fa-lock"></i> Mật khẩu mới
                     </label>
-                    <div className="login-password-wrapper">
+                    <div className="waze-password-wrapper">
                       <input
                         type={showNewPassword ? 'text' : 'password'}
-                        className="login-input"
+                        className="waze-input"
                         placeholder="Nhập mật khẩu mới"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
@@ -784,7 +861,7 @@ export default function LoginPage() {
                       />
                       <button
                         type="button"
-                        className="login-password-toggle"
+                        className="waze-password-toggle"
                         onClick={() => setShowNewPassword(!showNewPassword)}
                         tabIndex={-1}
                       >
@@ -793,14 +870,14 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  <div className="login-field">
-                    <label className="login-field-label">
-                      <i className="fa-solid fa-lock"></i> Xác nhận mật khẩu mới:
+                  <div className="waze-field">
+                    <label className="waze-field-label">
+                      <i className="fa-solid fa-lock"></i> Xác nhận mật khẩu mới
                     </label>
-                    <div className="login-password-wrapper">
+                    <div className="waze-password-wrapper">
                       <input
                         type={showConfirmPassword ? 'text' : 'password'}
-                        className="login-input"
+                        className="waze-input"
                         placeholder="Nhập lại mật khẩu mới"
                         value={confirmNewPassword}
                         onChange={(e) => setConfirmNewPassword(e.target.value)}
@@ -809,7 +886,7 @@ export default function LoginPage() {
                       />
                       <button
                         type="button"
-                        className="login-password-toggle"
+                        className="waze-password-toggle"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                         tabIndex={-1}
                       >
@@ -819,39 +896,42 @@ export default function LoginPage() {
                   </div>
 
                   {error && (
-                    <div className="login-alert login-alert-error">
+                    <div className="waze-alert waze-alert-error">
                       <i className="fa-solid fa-triangle-exclamation"></i>
                       <span>{error}</span>
                     </div>
                   )}
 
-                  <button type="submit" className="login-submit-btn" disabled={isLoading}>
+                  <button type="submit" className="waze-submit-btn" disabled={isLoading}>
                     {isLoading ? (
                       <>
-                        <div className="small-spinner" style={{ marginRight: '0.5rem' }}></div>
+                        <div className="waze-spinner"></div>
                         Đang xử lý...
                       </>
                     ) : (
-                      'Xác nhận đổi mật khẩu'
+                      <>
+                        <i className="fa-solid fa-check-double"></i>
+                        Xác nhận đổi mật khẩu
+                      </>
                     )}
                   </button>
 
-                  <div className="login-switch-row">
+                  <div className="waze-switch-row">
                     <button
                       type="button"
-                      className="login-switch-link"
+                      className="waze-switch-link"
                       onClick={() => { setMode('login'); setError(''); setSuccessMsg(''); }}
                       disabled={isLoading}
                     >
-                      Hủy & Đăng nhập
+                      <i className="fa-solid fa-arrow-left"></i> Hủy
                     </button>
                     <button
                       type="button"
-                      className={`login-resend-btn ${resendTimer > 0 ? 'disabled' : ''}`}
+                      className={`waze-resend-btn ${resendTimer > 0 ? 'disabled' : ''}`}
                       onClick={handleResendForgotPasswordOtp}
                       disabled={resendTimer > 0 || isLoading}
                     >
-                      {resendTimer > 0 ? `Gửi lại OTP (${resendTimer}s)` : 'Gửi lại mã OTP'}
+                      {resendTimer > 0 ? `Gửi lại (${resendTimer}s)` : 'Gửi lại OTP'}
                     </button>
                   </div>
                 </form>

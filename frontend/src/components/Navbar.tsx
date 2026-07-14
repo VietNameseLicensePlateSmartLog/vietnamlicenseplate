@@ -27,6 +27,7 @@ export default function Navbar({
     { id: 'image-tab', icon: 'fa-regular fa-image', label: 'Nhận diện Ảnh', requireAuth: true },
     { id: 'video-tab', icon: 'fa-regular fa-file-video', label: 'Nhận diện Video', requireAuth: true },
     { id: 'realtime-tab', icon: 'fa-solid fa-camera', label: 'Camera Realtime', requireAuth: false },
+    { id: 'livecam-link', icon: 'fa-solid fa-video', label: 'Live Cam', requireAuth: false, isLink: true, href: '/livecam' },
   ];
 
   return (
@@ -43,21 +44,32 @@ export default function Navbar({
 
       <nav className="nav-tabs">
         {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => {
-              if (tab.requireAuth && !isLoggedIn) {
-                onTabChange(tab.id);   // Chuyển tab để hiện RequireLogin
-                onLoginClick();        // Đồng thời mở modal đăng nhập
-              } else {
-                onTabChange(tab.id);
-              }
-            }}
-          >
-            <i className={tab.icon}></i>
-            <span>{tab.label}</span>
-          </button>
+          (tab as any).isLink ? (
+            <Link
+              key={tab.id}
+              href={(tab as any).href}
+              className="tab-btn"
+            >
+              <i className={tab.icon}></i>
+              <span>{tab.label}</span>
+            </Link>
+          ) : (
+            <button
+              key={tab.id}
+              className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => {
+                if (tab.requireAuth && !isLoggedIn) {
+                  onTabChange(tab.id);
+                  onLoginClick();
+                } else {
+                  onTabChange(tab.id);
+                }
+              }}
+            >
+              <i className={tab.icon}></i>
+              <span>{tab.label}</span>
+            </button>
+          )
         ))}
       </nav>
 

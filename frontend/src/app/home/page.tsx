@@ -32,7 +32,6 @@ export default function Home() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('realtime-tab');
 
-  // Kiểm tra trạng thái đăng nhập từ localStorage khi component mount
   useEffect(() => {
     const savedLogin = localStorage.getItem('isLoggedIn');
     const savedUser = localStorage.getItem('currentUser');
@@ -41,9 +40,9 @@ export default function Home() {
       setIsLoggedIn(true);
       setCurrentUser(savedUser);
       setUserRole(savedRole);
-      setActiveTab('image-tab'); // Nếu đã đăng nhập, mặc định vào tab nhận diện ảnh
+      setActiveTab('image-tab');
     } else {
-      setActiveTab('realtime-tab'); // Nếu chưa đăng nhập, mặc định vào tab camera realtime
+      setActiveTab('realtime-tab');
     }
   }, []);
 
@@ -52,31 +51,23 @@ export default function Home() {
   }, []);
 
   const handleLogout = useCallback(async () => {
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
+    const userId = localStorage.getItem('userId');
+    if (userId) {
       try {
-        await fetch(`${API_BASE}/auth/logout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: savedUser }),
-        });
+        await fetch(`${API_BASE}/auth/logout?user_id=${userId}`, { method: 'POST' });
       } catch (err) {
         console.error('Lỗi khi gọi API đăng xuất:', err);
       }
     }
-    setIsLoggedIn(false);
-    setCurrentUser(null);
-    setUserRole(null);
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('currentUser');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userId');
-    router.push('/login');
-  }, [router]);
+    window.location.href = '/login';
+  }, []);
 
   return (
     <div className="app-container">
-      {/* Animated Background */}
       <AnimatedBackground />
 
       <Navbar

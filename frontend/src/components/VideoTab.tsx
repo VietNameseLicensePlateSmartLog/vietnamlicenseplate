@@ -40,8 +40,10 @@ export default function VideoTab() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<TaskStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previewIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Dọn dẹp interval khi component unmount
   useEffect(() => {
@@ -49,14 +51,17 @@ export default function VideoTab() {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
       }
+      if (previewIntervalRef.current) {
+        clearInterval(previewIntervalRef.current);
+      }
     };
   }, []);
 
   const handleFileSelected = useCallback((file: File) => {
-    if (!file.type.startsWith('video/') && 
-        !file.name.endsWith('.mp4') && 
-        !file.name.endsWith('.avi') && 
-        !file.name.endsWith('.mov') && 
+    if (!file.type.startsWith('video/') &&
+        !file.name.endsWith('.mp4') &&
+        !file.name.endsWith('.avi') &&
+        !file.name.endsWith('.mov') &&
         !file.name.endsWith('.mkv')) {
       alert('Vui lòng chọn file video hợp lệ!');
       return;
@@ -65,6 +70,7 @@ export default function VideoTab() {
     // Reset task state
     setTaskId(null);
     setTaskStatus(null);
+    setPreviewUrl(null);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -94,9 +100,14 @@ export default function VideoTab() {
     setSelectedFile(null);
     setTaskId(null);
     setTaskStatus(null);
+    setPreviewUrl(null);
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
+    }
+    if (previewIntervalRef.current) {
+      clearInterval(previewIntervalRef.current);
+      previewIntervalRef.current = null;
     }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -107,6 +118,15 @@ export default function VideoTab() {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
     }
+    if (previewIntervalRef.current) {
+      clearInterval(previewIntervalRef.current);
+    }
+
+    // Bắt đầu preview polling (500ms)
+    setPreviewUrl(`${API_BASE}/tasks/${id}/preview?t=${Date.now()}`);
+    previewIntervalRef.current = setInterval(() => {
+      setPreviewUrl(`${API_BASE}/tasks/${id}/preview?t=${Date.now()}`);
+    }, 500);
 
     pollIntervalRef.current = setInterval(async () => {
       try {
@@ -121,6 +141,10 @@ export default function VideoTab() {
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
+          }
+          if (previewIntervalRef.current) {
+            clearInterval(previewIntervalRef.current);
+            previewIntervalRef.current = null;
           }
         }
       } catch (error) {
@@ -177,6 +201,16 @@ export default function VideoTab() {
       setIsSubmitting(false);
     }
   }, [selectedFile, startPolling]);
+
+  const handleStop = useCallback(async () => {
+    if (!taskId) return;
+    if (!confirm('Dừng xử lý? Các ảnh đã detect vẫn sẽ được lưu.')) return;
+    try {
+      await fetch(`${API_BASE}/tasks/${taskId}/cancel`, { method: 'POST' });
+    } catch (e) {
+      console.error('Lỗi dừng task:', e);
+    }
+  }, [taskId]);
 
   const isProcessing = taskStatus?.status === 'processing';
   const isCompleted = taskStatus?.status === 'completed';
@@ -304,12 +338,37 @@ export default function VideoTab() {
                 </div>
               )}
 
+              {/* Live Preview — Hiển thị frame đang xử lý có bounding box */}
+              {isProcessing && previewUrl && (
+                <div className="video-preview-section mt-4">
+                  <div className="video-preview-header">
+                    <i className="fa-solid fa-eye"></i>
+                    <h4>Xem trước kết quả</h4>
+                  </div>
+                  <div className="video-preview-container">
+                    <img
+                      src={previewUrl}
+                      alt="Video processing preview"
+                      className="video-preview-image"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="action-section mt-5">
-                {/* Processing spinner */}
+                {/* Processing spinner + Stop button */}
                 {isProcessing && (
                   <div className="processing-spinner-info">
                     <div className="small-spinner"></div>
                     <span>Đang phân tích và render video, vui lòng không đóng trang...</span>
+                  </div>
+                )}
+
+                {isProcessing && (
+                  <div className="mt-3" style={{ textAlign: 'center' }}>
+                    <button className="btn btn-danger btn-sm" onClick={handleStop}>
+                      <i className="fa-solid fa-stop"></i> Dừng xử lý
+                    </button>
                   </div>
                 )}
 

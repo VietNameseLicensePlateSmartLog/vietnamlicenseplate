@@ -8,6 +8,7 @@ const menuItems = [
   { name: 'Dashboard', href: '/admin/dashboard' },
   { name: 'Xác minh', href: '/admin/verification' },
   { name: 'Quản lý người dùng', href: '/admin/users' },
+  { name: 'Quản lý Camera', href: '/admin/cameras' },
   { name: 'Tỷ lệ dự đoán', href: '/admin/prediction-ratio' },
   { name: 'Thống kê biến số', href: '/admin/variable-stats' },
   { name: 'Nhật ký hoạt động', href: '/admin/activity-log' },

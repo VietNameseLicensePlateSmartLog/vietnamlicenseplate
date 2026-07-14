@@ -27,3 +27,16 @@ export function formatVnTime(str: string | null | undefined): string {
   if (!date) return 'N/A';
   return date.toLocaleString('vi-VN');
 }
+
+/**
+ * Tạo URL thumbnail cho ảnh Cloudinary.
+ * Nếu không phải Cloudinary URL → trả về nguyên gốc (local path).
+ * Dùng cho list view để load nhanh, click xem full thì dùng URL gốc.
+ */
+export function getThumbnailUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  // Chỉ transform được Cloudinary URLs
+  if (!url.includes('cloudinary.com')) return url;
+  // Chèn transform params: rộng 200px, cao 150px, crop fill, auto quality/format
+  return url.replace('/upload/', '/upload/w_200,h_150,c_fill,q_auto,f_auto/');
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { API_BASE } from '@/lib/api';
 
 export default function TopBar() {
   const router = useRouter();
@@ -14,11 +15,20 @@ export default function TopBar() {
     }
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const userId = localStorage.getItem('userId');
+    if (userId) {
+      try {
+        await fetch(`${API_BASE}/auth/logout?user_id=${userId}`, { method: 'POST' });
+      } catch (err) {
+        console.error('Lỗi khi gọi API đăng xuất:', err);
+      }
+    }
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('currentUser');
     localStorage.removeItem('userRole');
-    router.push('/home');
+    localStorage.removeItem('userId');
+    window.location.href = '/login';
   };
 
   return (

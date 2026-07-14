@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
 import { formatVnTime } from '@/lib/utils';
+import { getThumbnailUrl } from '@/lib/utils';
 
 interface UnverifiedDetection {
   id: number;
@@ -20,7 +21,6 @@ export default function Verification() {
   const [items, setItems] = useState<UnverifiedDetection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editedPlates, setEditedPlates] = useState<{ [key: number]: string }>({});
   const [actionLoading, setActionLoading] = useState<{ [key: number]: boolean }>({});
 
   const fetchUnverified = async () => {
@@ -32,13 +32,6 @@ export default function Verification() {
       }
       const data = await res.json();
       setItems(data);
-      
-      // Initialize edit values
-      const initialEdits: { [key: number]: string } = {};
-      data.forEach((d: UnverifiedDetection) => {
-        initialEdits[d.id] = d.plate_text;
-      });
-      setEditedPlates(initialEdits);
     } catch (err: any) {
       setError(err.message || 'Lỗi kết nối API.');
     } finally {
@@ -46,36 +39,43 @@ export default function Verification() {
     }
   };
 
+  /** Fetch 1 unverified detection tiếp theo để thay thế item vừa xác minh/xóa */
+  const fetchNextItem = async (currentCount: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/detections/unverified?skip=${currentCount}&limit=1`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.length > 0) {
+        setItems(prev => {
+          // Tránh duplicate key — chỉ thêm nếu id chưa có trong danh sách
+          if (prev.some(item => item.id === data[0].id)) return prev;
+          return [...prev, data[0]];
+        });
+      }
+    } catch { /* silent — không làm gián đoạn UI */ }
+  };
+
   useEffect(() => {
     fetchUnverified();
   }, []);
 
-  const handleInputChange = (id: number, val: string) => {
-    setEditedPlates(prev => ({ ...prev, [id]: val.toUpperCase() }));
-  };
-
-  const handleVerify = async (id: number, isCorrect: number) => {
+  const handleVerify = async (id: number, isCorrect: number, correctPlate: string) => {
     setActionLoading(prev => ({ ...prev, [id]: true }));
     try {
-      const correctPlate = editedPlates[id] || '';
-
-      // Read the real user ID from localStorage
       const userId = localStorage.getItem('userId') || '0';
-
-      // FastAPI expects these parameters in the query string
       const url = `${API_BASE}/admin/verify-detection?detection_id=${id}&correct_plate=${encodeURIComponent(correctPlate)}&is_correct=${isCorrect}&verified_by=${userId}`;
 
-      const res = await fetch(url, {
-        method: 'POST',
-      });
-
+      const res = await fetch(url, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.detail || 'Lỗi khi xác minh.');
       }
 
-      // Remove from lists
-      setItems(prev => prev.filter(item => item.id !== id));
+      setItems(prev => {
+        const next = prev.filter(item => item.id !== id);
+        fetchNextItem(next.length);
+        return next;
+      });
     } catch (err: any) {
       alert(err.message || 'Đã xảy ra lỗi.');
     } finally {
@@ -88,17 +88,16 @@ export default function Verification() {
 
     setActionLoading(prev => ({ ...prev, [id]: true }));
     try {
-      const res = await fetch(`${API_BASE}/admin/detections/${id}`, {
-        method: 'DELETE',
-      });
-
+      const res = await fetch(`${API_BASE}/admin/detections/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.detail || 'Lỗi khi xóa.');
       }
-
-      // Remove from list
-      setItems(prev => prev.filter(item => item.id !== id));
+      setItems(prev => {
+        const next = prev.filter(item => item.id !== id);
+        fetchNextItem(next.length);
+        return next;
+      });
     } catch (err: any) {
       alert(err.message || 'Đã xảy ra lỗi.');
     } finally {
@@ -143,16 +142,17 @@ export default function Verification() {
           {items.map(item => {
             const formattedTime = formatVnTime(item.created_at);
             const isSaving = actionLoading[item.id];
-            
+
             return (
               <div key={item.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '15px' }}>
-                
+
                 {/* Ảnh snapshot */}
                 <div style={{ position: 'relative', width: '100%', height: '180px', borderRadius: '8px', overflow: 'hidden', background: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid rgba(255,255,255,0.05)' }}>
                   {item.image_path ? (
-                    <img 
-                      src={item.image_path} 
-                      alt="License Plate Crop" 
+                    <img
+                      loading="lazy"
+                      src={getThumbnailUrl(item.image_path)}
+                      alt="License Plate Crop"
                       style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     />
                   ) : (
@@ -182,51 +182,51 @@ export default function Verification() {
                     </span>
                   </div>
                   {item.alt_text && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', background: 'rgba(255,255,255,0.04)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>Đọc thay thế (ver 2)</span>
+                        <span style={{ color: 'rgba(255,255,255,0.75)', fontWeight: 600, letterSpacing: '1px' }}>
+                          {item.alt_text}
+                          <span style={{ color: (item.alt_confidence || 0) >= 0.8 ? '#34d399' : '#fbbf24', fontWeight: 500, marginLeft: '6px', fontSize: '0.8rem' }}>
+                            {((item.alt_confidence || 0) * 100).toFixed(2)}%
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {item.total_frames && item.total_frames > 1 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                      <span style={{ color: 'rgba(255,255,255,0.4)' }}>Biển phụ:</span>
-                      <span style={{ color: 'rgba(255,255,255,0.6)', fontStyle: 'italic' }}>
-                        {item.alt_text} ({((item.alt_confidence || 0) * 100).toFixed(2)}%)
-                      </span>
+                      <span style={{ color: 'rgba(255,255,255,0.5)' }}>Số frame:</span>
+                      <span style={{ color: 'rgba(255,255,255,0.6)' }}>{item.total_frames} frame</span>
                     </div>
                   )}
                 </div>
 
-                {/* Input chỉnh sửa & Nút xác minh */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: 'auto', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div>
-                    <label style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '5px' }}>Biển số thực tế:</label>
-                    <input 
-                      type="text" 
-                      value={editedPlates[item.id] || ''} 
-                      onChange={(e) => handleInputChange(item.id, e.target.value)}
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', padding: '8px 10px', borderRadius: '6px', fontSize: '0.95rem', fontWeight: 600, letterSpacing: '1px', textAlign: 'center' }}
-                      placeholder="Nhập biển số đúng..."
-                      disabled={isSaving}
-                    />
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '5px' }}>
+                {/* Nút xác minh */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: 'auto', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  {/* Nút Đúng / Sai — dùng plate_text chính */}
+                  <div style={{ display: 'grid', gridTemplateColumns: item.alt_text ? '1fr 1fr 1fr' : '1fr 1fr 1fr', gap: '10px' }}>
                     <button
-                      onClick={() => handleVerify(item.id, 1)}
-                      disabled={isSaving || editedPlates[item.id] !== item.plate_text}
+                      onClick={() => handleVerify(item.id, 1, item.plate_text)}
+                      disabled={isSaving}
                       style={{
                         backgroundColor: '#10b981',
                         color: '#fff',
-                        opacity: (isSaving || editedPlates[item.id] !== item.plate_text) ? 0.5 : 1,
-                        cursor: (isSaving || editedPlates[item.id] !== item.plate_text) ? 'not-allowed' : 'pointer'
+                        opacity: isSaving ? 0.5 : 1,
+                        cursor: isSaving ? 'not-allowed' : 'pointer'
                       }}
                     >
                       {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <><i className="fa-solid fa-check" style={{ marginRight: '5px' }}></i>Đúng</>}
                     </button>
                     <button
-                      onClick={() => handleVerify(item.id, 0)}
-                      disabled={isSaving || !editedPlates[item.id]}
+                      onClick={() => handleVerify(item.id, 0, item.plate_text)}
+                      disabled={isSaving}
                       style={{
                         backgroundColor: 'rgba(245, 158, 11, 0.2)',
                         border: '1px solid rgba(245, 158, 11, 0.4)',
                         color: '#fbc02d',
-                        opacity: (isSaving || !editedPlates[item.id]) ? 0.5 : 1,
-                        cursor: (isSaving || !editedPlates[item.id]) ? 'not-allowed' : 'pointer'
+                        opacity: isSaving ? 0.5 : 1,
+                        cursor: isSaving ? 'not-allowed' : 'pointer'
                       }}
                     >
                       {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <><i className="fa-solid fa-xmark" style={{ marginRight: '5px' }}></i>Sai</>}
@@ -245,6 +245,29 @@ export default function Verification() {
                       {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <><i className="fa-solid fa-trash" style={{ marginRight: '5px' }}></i>Xóa</>}
                     </button>
                   </div>
+
+                  {/* Nút "Dùng ver alt" — chỉ hiện khi có alt_text */}
+                  {item.alt_text && (
+                    <button
+                      onClick={() => handleVerify(item.id, 1, item.alt_text!)}
+                      disabled={isSaving}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(99,102,241,0.2)',
+                        border: '1px solid rgba(99,102,241,0.4)',
+                        color: '#a5b4fc',
+                        padding: '8px',
+                        borderRadius: '6px',
+                        fontSize: '0.85rem',
+                        fontWeight: 500,
+                        cursor: isSaving ? 'not-allowed' : 'pointer',
+                        opacity: isSaving ? 0.5 : 1,
+                      }}
+                    >
+                      <i className="fa-solid fa-arrow-right-arrow-left" style={{ marginRight: '6px', fontSize: '0.8rem' }}></i>
+                      Dùng ver thay thế: <strong>{item.alt_text}</strong>
+                    </button>
+                  )}
                 </div>
 
               </div>

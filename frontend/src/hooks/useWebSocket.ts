@@ -128,7 +128,7 @@ export function useWebSocket({ onResults, onError, onFirstResult, onConnected }:
     cleanup();
   }, [cleanup]);
 
-  const sendFrame = useCallback((base64Data: string, conf1 = 0.5, conf2 = 0.5, conf3 = 0.3, regionId: number | null = null) => {
+  const sendFrame = useCallback((base64Data: string, conf1 = 0.5, conf2 = 0.5, conf3 = 0.3, regionId: number | null = null, cameraId: number | null = null) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     let userId: number | null = null;
@@ -146,6 +146,7 @@ export function useWebSocket({ onResults, onError, onFirstResult, onConnected }:
       conf3,
       user_id: userId,
       region_id: regionId,
+      camera_id: cameraId,
     }));
   }, []);
 

@@ -1357,6 +1357,330 @@ class PredictService:
                 for p in local_snapshot_paths:
                     cleanup_file(p)
 
+    @staticmethod
+    async def handle_websocket_ip(websocket: WebSocket):
+        """WebSocket nhận diện biển số từ IP camera.
+        Backend tự đọc frame từ IP camera bằng OpenCV, chạy YOLO detect,
+        gửi kết quả + frame base64 về frontend hiển thị."""
+        await websocket.accept()
+        centroid_tracker = CentroidTracker()
+        ws_frame_idx = 0
+        local_snapshot_paths = []
+        cap = None
+
+        try:
+            # ── Nhận IP camera URL từ client ──
+            init_data = await websocket.receive_json()
+            camera_url = init_data.get("camera_url", "").strip()
+            conf1 = float(init_data.get("conf1", settings.CONF_S1_IMG))
+            conf2 = float(init_data.get("conf2", settings.CONF_S2_IMG))
+            conf3 = float(init_data.get("conf3", settings.CONF_S3_IMG))
+
+            try:
+                user_id = int(init_data.get("user_id")) if init_data.get("user_id") is not None else None
+            except (ValueError, TypeError):
+                user_id = None
+
+            try:
+                region_id = int(init_data.get("region_id")) if init_data.get("region_id") is not None else None
+            except (ValueError, TypeError):
+                region_id = None
+
+            try:
+                camera_id = int(init_data.get("camera_id")) if init_data.get("camera_id") is not None else None
+            except (ValueError, TypeError):
+                camera_id = None
+
+            # ── Nếu có camera_id mà không có camera_url, lấy từ DB ──
+            if not camera_url and camera_id:
+                from src.modules.camera.connection_manager import build_stream_url, auto_fix_url
+                from src.modules.camera.models import Camera as CameraModel
+                db = SessionLocal()
+                try:
+                    db_camera = db.query(CameraModel).filter(CameraModel.id == camera_id).first()
+                    if db_camera:
+                        # Ưu tiên rtsp_url, fallback stream_url (MJPEG từ Live Cam)
+                        if db_camera.rtsp_url:
+                            camera_url = build_stream_url(db_camera)
+                            camera_url = auto_fix_url(camera_url, db_camera.stream_type or "rtsp")
+                        elif db_camera.stream_url:
+                            camera_url = db_camera.stream_url.strip()
+                            print(f"[WS-LPR-IP] rtsp_url trống, dùng stream_url: {camera_url}")
+                        # Lấy region từ camera nếu không có
+                        if not region_id and db_camera.region_id:
+                            region_id = db_camera.region_id
+                        if camera_url:
+                            print(f"[WS-LPR-IP] Resolved camera #{camera_id} URL from DB: {camera_url}")
+                        else:
+                            await websocket.send_json({
+                                "status": "error",
+                                "message": f"Camera #{camera_id} chưa có URL kết nối. Vui lòng cấu hình trên trang Live Cam hoặc Admin."
+                            })
+                            return
+                    else:
+                        await websocket.send_json({
+                            "status": "error",
+                            "message": f"Camera #{camera_id} không tìm thấy trong hệ thống."
+                        })
+                        return
+                finally:
+                    db.close()
+
+            if not camera_url:
+                await websocket.send_json({"status": "error", "message": "Thiếu địa chỉ camera URL."})
+                return
+
+            # ── Auto-fix URL: thêm protocol nếu thiếu, thêm /video nếu không có path ──
+            if not camera_url.startswith(("http://", "https://", "rtsp://", "rtmp://")):
+                camera_url = "http://" + camera_url
+            # Nếu chỉ có host:port mà không có path → thêm /video (IP Webcam Android default)
+            from urllib.parse import urlparse
+            parsed = urlparse(camera_url)
+            if not parsed.path or parsed.path == "/":
+                camera_url = camera_url.rstrip("/") + "/video"
+
+            print(f"[WS-LPR-IP] Connecting to: {camera_url}")
+
+            # ── Mở IP camera bằng OpenCV (với retry) ──
+            # cap.isOpened() không đáng tin cho network stream — cần đọc thử frame
+            MAX_CONNECT_RETRIES = 3
+            CONNECT_TIMEOUT_MS = 5000  # 5s timeout cho mỗi lần thử kết nối
+            cap = None
+            for attempt in range(1, MAX_CONNECT_RETRIES + 1):
+                cap = cv2.VideoCapture(camera_url)
+                # Set timeout để FFmpeg/TCP không treo quá lâu
+                try:
+                    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, CONNECT_TIMEOUT_MS)
+                    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, CONNECT_TIMEOUT_MS)
+                except Exception:
+                    pass  # Một số build OpenCV không hỗ trợ timeout props
+                if not cap.isOpened():
+                    print(f"[WS-LPR-IP] Attempt {attempt}/{MAX_CONNECT_RETRIES}: isOpened()=False for {camera_url}")
+                    cap.release()
+                    cap = None
+                    if attempt < MAX_CONNECT_RETRIES:
+                        await asyncio.sleep(1.0)
+                    continue
+
+                # isOpened()=True nhưng có thể kết nối TCP vẫn fail (async).
+                # Đọc thử 1 frame để xác nhận kết nối thực sự hoạt động.
+                ret, test_frame = await asyncio.to_thread(cap.read)
+                if ret and test_frame is not None:
+                    print(f"[WS-LPR-IP] Connected OK on attempt {attempt} — "
+                          f"first frame {test_frame.shape[1]}x{test_frame.shape[0]}")
+                    break
+                else:
+                    print(f"[WS-LPR-IP] Attempt {attempt}/{MAX_CONNECT_RETRIES}: "
+                          f"isOpened()=True but read() failed for {camera_url}")
+                    cap.release()
+                    cap = None
+                    if attempt < MAX_CONNECT_RETRIES:
+                        await asyncio.sleep(1.0)
+
+            if cap is None:
+                print(f"[WS-LPR-IP] All {MAX_CONNECT_RETRIES} attempts failed for: {camera_url}")
+                await websocket.send_json({
+                    "status": "error",
+                    "message": f"Không thể kết nối camera sau {MAX_CONNECT_RETRIES} lần thử: {camera_url}. "
+                               f"Kiểm tra IP camera có đang chạy và cùng mạng không."
+                })
+                return
+
+            # Gửi xác nhận kết nối thành công
+            await websocket.send_json({"status": "connected", "message": "Đã kết nối IP camera."})
+
+            # Cập nhật is_online trong DB
+            if camera_id:
+                try:
+                    from datetime import datetime
+                    from src.modules.camera.models import Camera as CameraModel
+                    db_online = SessionLocal()
+                    cam_update = db_online.query(CameraModel).filter(CameraModel.id == camera_id).first()
+                    if cam_update:
+                        cam_update.is_online = True
+                        cam_update.last_connected_at = datetime.utcnow()
+                        cam_update.last_error = None
+                        db_online.commit()
+                    db_online.close()
+                except Exception as e:
+                    logger.warning("Failed to update camera is_online: %s", e)
+
+            service = init_lpr_service()
+            frame_interval = 1.0 / 10  # target 10 FPS
+            frame_timeout_count = 0
+            max_frame_timeout = 50  # 5s nếu mỗi frame ~100ms
+            frame_count = 0
+
+            # ── Loop đọc frame + detect ──
+            while True:
+                frame_start_time = time.time()
+
+                # Đọc frame trong thread để không block event loop
+                ret, frame_bgr = await asyncio.to_thread(cap.read)
+
+                if not ret or frame_bgr is None:
+                    frame_timeout_count += 1
+                    if frame_timeout_count >= max_frame_timeout:
+                        await websocket.send_json({
+                            "status": "error",
+                            "message": "Camera không phản hồi — mất kết nối."
+                        })
+                        break
+                    # Chờ 100ms rồi thử lại
+                    await asyncio.sleep(0.1)
+                    continue
+
+                frame_timeout_count = 0  # Reset timeout counter khi đọc được frame
+                frame_count += 1
+                if frame_count == 1:
+                    print(f"[WS-LPR-IP] First frame read OK — {frame_bgr.shape[1]}x{frame_bgr.shape[0]} from {camera_url}")
+
+                # Chuyển đổi frame
+                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                pil_img = Image.fromarray(frame_rgb)
+
+                # Resize frame max 640px width để gửi về frontend
+                img_h, img_w = frame_rgb.shape[:2]
+                max_w = 640
+                scale = min(1.0, max_w / img_w) if img_w > 0 else 1.0
+                display_w = int(img_w * scale)
+                display_h = int(img_h * scale)
+
+                # Encode frame thành base64 JPEG để gửi về frontend
+                if scale < 1.0:
+                    frame_resized = cv2.resize(frame_bgr, (display_w, display_h), interpolation=cv2.INTER_AREA)
+                else:
+                    frame_resized = frame_bgr
+                _, buffer = cv2.imencode('.jpg', frame_resized, [cv2.IMWRITE_JPEG_QUALITY, 60])
+                frame_base64 = base64.b64encode(buffer).decode('utf-8')
+
+                # ── Chạy YOLO inference ──
+                results = await asyncio.to_thread(
+                    service, pil_img, conf1, conf2, conf3, "video", 640
+                )
+
+                # Filter valid plates
+                valid_plates = []
+                for plate in results:
+                    text = plate.get("plate_text") or plate.get("text", "")
+                    if not text or text == "???" or "?" in text:
+                        continue
+                    if not is_valid_plate(text):
+                        continue
+                    if get_plate_format_score(text) <= 0:
+                        continue
+                    valid_plates.append({
+                        "text": text,
+                        "conf": plate.get("plate_confidence") or plate.get("conf", 0),
+                        "bbox": plate.get("bbox"),
+                        "char_confs": plate.get("char_confs"),
+                    })
+
+                finalized = centroid_tracker.update(valid_plates, frame_idx=ws_frame_idx, frame_img=pil_img)
+                ws_frame_idx += 1
+
+                # Lưu finalized detections vào DB
+                for result in finalized:
+                    final_text = result['text']
+                    final_conf = result['conf']
+                    final_bbox = result.get('first_bbox') or result.get('bbox')
+                    format_score = result.get('format_score', 0)
+
+                    if not is_valid_plate(final_text):
+                        continue
+                    if format_score <= 0:
+                        continue
+
+                    first_img = result.get('first_frame_img') or result.get('best_frame_img') or pil_img
+
+                    if final_bbox:
+                        annotated_img = draw_plate_results(first_img, [{'bbox': final_bbox, 'text': final_text, 'conf': final_conf}])
+                    else:
+                        annotated_img = draw_plate_results(first_img, [{'bbox': [0, 0, 100, 100], 'text': final_text, 'conf': final_conf}])
+                    snapshot_rel_path = save_snapshot_local_only(annotated_img)
+                    local_snapshot_paths.append(snapshot_rel_path)
+
+                    with SessionLocal() as db:
+                        actual_region_id = region_id
+                        if not actual_region_id:
+                            first_reg = db.query(Region).first()
+                            if first_reg:
+                                actual_region_id = first_reg.id
+
+                        db_item = Detection(
+                            plate_text=final_text,
+                            plate_confidence=final_conf,
+                            alt_text=result.get('alt_text'),
+                            alt_confidence=result.get('alt_confidence'),
+                            total_frames=result.get('total_frames', 0),
+                            frame_start=result.get('frame_start'),
+                            frame_end=result.get('frame_end'),
+                            image_path=snapshot_rel_path,
+                            source_type="camera",
+                            user_id=user_id,
+                            region_id=actual_region_id,
+                            camera_id=camera_id
+                        )
+                        db.add(db_item)
+                        db.commit()
+
+                # ── Gửi kết quả + frame về frontend ──
+                active_plates = centroid_tracker.get_active_plates()
+                clean_finalized = [{k: v for k, v in r.items() if k not in ('best_frame_img', 'first_frame_img')} for r in finalized]
+                await websocket.send_json({
+                    "status": "success",
+                    "results": clean_finalized,
+                    "active_plates": active_plates,
+                    "frame": frame_base64,
+                    "frame_size": {"width": display_w, "height": display_h}
+                })
+
+                # Giữ đều frame rate ~10 FPS
+                elapsed = time.time() - frame_start_time
+                sleep_time = frame_interval - elapsed
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            print(f"[WS-LPR-IP] Error: {e}")
+            try:
+                await websocket.send_json({"status": "error", "message": str(e)})
+            except Exception:
+                pass
+        finally:
+            # ── Giải phóng camera ──
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+
+            # Cập nhật is_online = False trong DB
+            if camera_id:
+                try:
+                    from src.modules.camera.models import Camera as CameraModel
+                    db_offline = SessionLocal()
+                    cam_offline = db_offline.query(CameraModel).filter(CameraModel.id == camera_id).first()
+                    if cam_offline:
+                        cam_offline.is_online = False
+                        db_offline.commit()
+                    db_offline.close()
+                except Exception:
+                    pass
+
+            # ── Batch upload snapshots lên Cloudinary ──
+            if local_snapshot_paths:
+                try:
+                    cloud_mapping = batch_upload_to_cloudinary(local_snapshot_paths)
+                    if cloud_mapping:
+                        update_detection_paths_to_cloudinary(cloud_mapping)
+                except Exception as e:
+                    print(f"[WS-LPR-IP] Batch upload error: {e}")
+                for p in local_snapshot_paths:
+                    cleanup_file(p)
+
     # =========================================================================
     # Video Preview + Cancel
     # =========================================================================

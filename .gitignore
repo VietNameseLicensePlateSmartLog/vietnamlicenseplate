@@ -3,6 +3,7 @@ node_modules/
 __pycache__/
 *.pyc
 .env
+.env.local
 .venv/
 venv/
 dist/
@@ -11,4 +12,16 @@ build/
 
 # Claude directory
 .claude/
+
+# AI model weights (54MB — too large for GitHub)
+backend/weights/*.pt
+
+# Snapshots (user uploads)
+backend/static/snapshots/
+
+# Video processing temp files
+*.mp4
+*.avi
+*.mkv
+*.mov
 

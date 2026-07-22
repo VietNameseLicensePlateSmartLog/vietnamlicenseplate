@@ -18,3 +18,13 @@ class Camera(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # --- IP Camera connection fields ---
+    stream_type = Column(String(20), default="rtsp")           # rtsp | http | rtmp
+    username = Column(String(100), nullable=True)
+    password_encrypted = Column(String(200), nullable=True)    # Fernet-encrypted
+    connect_timeout = Column(Integer, default=10)               # seconds
+    reconnect_interval = Column(Integer, default=5)             # seconds between retries
+    max_reconnect_attempts = Column(Integer, default=10)
+    last_connected_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)

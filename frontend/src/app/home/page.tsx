@@ -82,9 +82,16 @@ export default function Home() {
       />
 
       <main className="main-content">
-        {activeTab === 'image-tab' && (isLoggedIn ? <ImageTab /> : <RequireLogin onLoginClick={() => router.push('/login')} />)}
-        {activeTab === 'video-tab' && (isLoggedIn ? <VideoTab /> : <RequireLogin onLoginClick={() => router.push('/login')} />)}
-        {activeTab === 'realtime-tab' && <RealtimeTab />}
+        {/* Luôn mount cả 3 tab, dùng CSS display để ẩn/hiện → giữ state khi chuyển tab */}
+        <div style={{ display: activeTab === 'image-tab' ? 'block' : 'none' }}>
+          {isLoggedIn ? <ImageTab /> : <RequireLogin onLoginClick={() => router.push('/login')} />}
+        </div>
+        <div style={{ display: activeTab === 'video-tab' ? 'block' : 'none' }}>
+          {isLoggedIn ? <VideoTab visible={activeTab === 'video-tab'} /> : <RequireLogin onLoginClick={() => router.push('/login')} />}
+        </div>
+        <div style={{ display: activeTab === 'realtime-tab' ? 'block' : 'none' }}>
+          <RealtimeTab />
+        </div>
       </main>
 
       <footer className="app-footer">

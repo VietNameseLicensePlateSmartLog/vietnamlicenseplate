@@ -2,12 +2,14 @@
 3-Stage YOLOv8 Pipeline for Vietnam License Plate Recognition.
 Stage 1: Phát hiện biển số (Object Detection)
 Stage 2: Phát hiện ký tự (Object Detection)
-Stage 3: Phân loại ký tự (Classification)
+Stage 3: Phân loại ký tự (Classification) — BATCHED for performance
 
 Logic khôi phục từ version cũ verified hoạt động tốt,
 giữ nguyên cấu trúc thư mục MVC mới.
+Optimized: removed debug prints, batched Stage3 inference.
 """
 import os
+import logging
 import numpy as np
 import cv2
 import torch
@@ -23,6 +25,8 @@ from src.modules.detection.ai.preprocessing import (
     separate_characters_by_row,
 )
 from src.modules.detection.ai.validation import is_valid_plate
+
+logger = logging.getLogger(__name__)
 
 # Confidence thresholds — read from settings (env override supported)
 CONF_S1_IMG = settings.CONF_S1_IMG
@@ -58,7 +62,7 @@ def init_lpr_service():
     if _lpr_inference_fn is not None:
         return _lpr_inference_fn
 
-    print("[LPR] 🚀 Đang tải mô hình 3-stage YOLOv8...")
+    logger.info("[LPR] Loading 3-stage YOLOv8 models...")
 
     if not os.path.exists(WEIGHTS_DIR):
         raise RuntimeError(f"❌ Không tìm thấy thư mục weights: {WEIGHTS_DIR}")
@@ -74,15 +78,16 @@ def init_lpr_service():
     # Xác định thiết bị GPU/CPU
     if settings.DEVICE == "cuda" and torch.cuda.is_available():
         _device = "cuda"
-        print(f"[LPR] ✅ GPU detected: {torch.cuda.get_device_name(0)}")
-        print(f"[LPR] CUDA version: {torch.version.cuda}")
-        print(f"[LPR] GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        logger.info("[LPR] GPU: %s, CUDA: %s, Memory: %.1f GB",
+                     torch.cuda.get_device_name(0),
+                     torch.version.cuda,
+                     torch.cuda.get_device_properties(0).total_memory / 1024**3)
     else:
         _device = "cpu"
         if settings.DEVICE == "cuda":
-            print("[LPR] ⚠️  CUDA not available, falling back to CPU")
+            logger.warning("[LPR] CUDA not available, falling back to CPU")
         else:
-            print(f"[LPR] Device set to: {_device}")
+            logger.info("[LPR] Device: CPU")
 
     s1_model = YOLO(stage1_path)
     s2_model = YOLO(stage2_path)
@@ -93,21 +98,19 @@ def init_lpr_service():
         s1_model.to("cuda")
         s2_model.to("cuda")
         s3_model.to("cuda")
-        print("[LPR] ✅ All 3 models moved to GPU")
-        # Warmup: chạy 1 inference giả định để JIT compile CUDA kernels
-        print("[LPR] Warming up GPU...")
+        logger.info("[LPR] All 3 models moved to GPU, warming up...")
         try:
             dummy = Image.new('RGB', (640, 640), color=(128, 128, 128))
             s1_model.predict(dummy, imgsz=640, conf=0.5, device="cuda", verbose=False)
-            print("[LPR] ✅ GPU warmup complete")
+            logger.info("[LPR] GPU warmup complete")
         except Exception as e:
-            print(f"[LPR] ⚠️  Warmup failed: {e}")
+            logger.warning("[LPR] Warmup failed: %s", e)
     else:
         s1_model.to("cpu")
         s2_model.to("cpu")
         s3_model.to("cpu")
 
-    print(f"[LPR] ✅ Đã tải xong 3 mô hình YOLOv8 (device: {_device})")
+    logger.info("[LPR] Loaded 3 YOLOv8 models (device: %s)", _device)
 
     _lpr_inference_fn = run_inference
     return _lpr_inference_fn
@@ -250,6 +253,9 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
     imgsz: kích thước input cho Stage 1 (1280 cho ảnh, 1024 cho video, 640 cho realtime).
     return_crop: nếu True, trả về thêm plate_crop_img (PIL.Image) — ảnh cắt theo bbox Stage 1.
 
+    PERFORMANCE: Stage3 character classification được BATCH — tất cả ký tự
+    từ tất cả plates được gom thành 1 batch predict thay vì predict từng ký tự.
+
     Trả về: list dict {
         plate_text: str, plate_confidence: float, bbox: list,
         alt_text: str | None, alt_confidence: float | None,
@@ -263,7 +269,6 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
     is_video = (mode == "video")
 
     # ===== STAGE 1: Phát hiện biển số =====
-    # Dùng PIL image trực tiếp cho YOLO (như code gốc verified)
     results_s1 = s1_model.predict(image_source, conf=conf1, imgsz=imgsz, iou=0.5, device=_device, verbose=False)
 
     if not results_s1 or len(results_s1) == 0 or results_s1[0].boxes is None or len(results_s1[0].boxes) == 0:
@@ -271,19 +276,19 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
 
     # NMS trên Stage 1
     raw_plate_boxes = [tuple(map(int, b.xyxy[0].tolist())) for b in results_s1[0].boxes]
-    raw_s1_confs = [float(b.conf[0]) for b in results_s1[0].boxes]
     plate_boxes = nms_boxes(raw_plate_boxes, iou_threshold=0.5)
-
-    # DEBUG: Log Stage 1 detections
-    print(f"[DEBUG-S1] Raw detections: {len(raw_plate_boxes)}, after NMS: {len(plate_boxes)}, conf1={conf1}")
-    for i, (box, conf) in enumerate(zip(raw_plate_boxes, raw_s1_confs)):
-        print(f"[DEBUG-S1]   Plate {i}: bbox={box}, conf={conf:.4f}")
 
     plates = []
 
-    for (x1, y1, x2, y2) in plate_boxes:
-        # Lấy confidence từ Stage 1 — dùng IoU matching thay vì exact match
-        # (exact match có thể fail do floating point → int conversion)
+    # ═══ Collect all char images for BATCHED Stage3 ═══
+    # Instead of 1 predict per char (8-9 inferences), we batch ALL chars into 1 predict
+    all_char_images = []      # [PIL.Image, ...] — flat list for batch predict
+    char_plate_map = []       # [(plate_idx, char_idx_in_plate), ...] — maps back to plate
+
+    plate_data = []  # Per-plate intermediate data
+
+    for plate_idx, (x1, y1, x2, y2) in enumerate(plate_boxes):
+        # Lấy confidence từ Stage 1 — IoU matching
         s1_conf = 0.0
         best_iou = 0.0
         for b in results_s1[0].boxes:
@@ -299,22 +304,17 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
                 best_iou = iou
                 s1_conf = float(b.conf[0])
 
-        # Bước 1: Crop biển số từ ảnh PIL gốc (như code gốc)
+        # Crop biển số + preprocess
         plate_crop = image_source.crop((x1, y1, x2, y2))
-
-        # Bước 2-4: Deskew → Pad → Preprocess (grayscale+sharpen cho Stage 2)
-        # processed_plate: grayscale → sharpen → RGB (cho Stage 2 detect ký tự)
-        # plate_padded: chỉ deskew + pad, giữ RGB (cho Stage 3 crop ký tự)
         processed_plate, plate_padded = preprocess_plate_image(plate_crop, is_video=is_video)
 
         # ===== STAGE 2: Phát hiện ký tự =====
-        # Dùng PIL Image cho YOLO predict (giống code gốc verified)
         results_s2 = s2_model.predict(processed_plate, imgsz=640, conf=conf2, device=_device, verbose=False)
 
         if not results_s2 or len(results_s2) == 0 or results_s2[0].boxes is None or len(results_s2[0].boxes) == 0:
+            plate_data.append(None)
             continue
 
-        # Lấy boxes + confs từ Stage 2
         raw_char_bboxes = []
         raw_char_confs = []
         for char_box in results_s2[0].boxes:
@@ -324,6 +324,7 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
             raw_char_confs.append(char_conf)
 
         if not raw_char_bboxes:
+            plate_data.append(None)
             continue
 
         # NMS trên Stage 2
@@ -331,7 +332,7 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
         filtered_tuples = nms_boxes(raw_tuples, iou_threshold=0.3)
         char_bboxes = [list(t) for t in filtered_tuples]
 
-        # Lọc confs tương ứng với filtered bboxes
+        # Lọc confs tương ứng
         char_confs = []
         for cb in char_bboxes:
             for i, orig in enumerate(raw_char_bboxes):
@@ -339,11 +340,9 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
                     char_confs.append(raw_char_confs[i])
                     break
 
-        # Lọc box quá nhỏ (noise, nhiễu) — giữ nguyên box lớn
-        # Chỉ loại box < 70% trung bình
+        # Lọc box quá nhỏ
         if char_bboxes:
             char_bboxes = filter_small_boxes(char_bboxes, min_coverage_ratio=0.7)
-            # Sau khi filter, cần cập nhật lại char_confs
             new_char_confs = []
             for cb in char_bboxes:
                 found = False
@@ -357,55 +356,84 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
             char_confs = new_char_confs
 
         if len(char_bboxes) == 0:
+            plate_data.append(None)
             continue
 
-        # ===== STAGE 3: Phân loại ký tự =====
-        # Sort theo hàng rồi crop từng ký tự từ processed_plate (PIL)
+        # Sort theo hàng
         sorted_bboxes = sort_chars_by_row(char_bboxes)
 
-        all_chars_text = []
-        all_chars_confs = []
-        all_topk_per_char = []
-        actual_char_bboxes = []
-
-        for bbox in sorted_bboxes:
+        # Crop tất cả ký tự, collect cho BATCH inference
+        plate_char_indices = []  # indices into all_char_images
+        for char_idx, bbox in enumerate(sorted_bboxes):
             cx1, cy1, cx2, cy2 = bbox
-            # Crop từ plate_padded (RGB gốc, đã deskew+pad) — KHÔNG dùng processed_plate
-            # Vì processed_plate đã grayscale → mất info màu cho Stage 3 classification
-            # boxes đang ở tọa độ plate_padded nên KHÔNG trừ padding
             char_img = plate_padded.crop((
                 max(0, cx1), max(0, cy1),
                 min(plate_padded.width, cx2), min(plate_padded.height, cy2)
             ))
             char_img_resized = char_img.resize((64, 64), Image.BILINEAR)
+            global_idx = len(all_char_images)
+            all_char_images.append(char_img_resized)
+            char_plate_map.append((plate_idx, char_idx))
+            plate_char_indices.append(global_idx)
 
-            # Dùng PIL Image cho YOLO predict (giống code gốc)
-            results_s3 = s3_model.predict(char_img_resized, imgsz=64, device=_device, verbose=False)
+        plate_data.append({
+            "s1_conf": s1_conf,
+            "bbox": (x1, y1, x2, y2),
+            "plate_crop": plate_crop,
+            "sorted_bboxes": sorted_bboxes,
+            "plate_char_indices": plate_char_indices,
+        })
 
-            if results_s3 and len(results_s3) > 0 and results_s3[0].probs is not None:
-                top5_indices = results_s3[0].probs.top5
-                top5_confs = results_s3[0].probs.top5conf.tolist()
-                class_names = results_s3[0].names
+    # ===== STAGE 3: BATCHED Phân loại ký tự =====
+    # Gom TẤT CẢ ký tự từ TẤT CẢ plates thành 1 batch predict
+    # Thay vì N individual predicts → 1 batch predict (nhanh hơn nhiều)
+    all_s3_results = []
+    if all_char_images:
+        logger.debug("[PIPELINE] Stage3 batch: %d char images", len(all_char_images))
+        all_s3_results = s3_model.predict(
+            all_char_images, imgsz=64, device=_device, verbose=False
+        )
 
-                if top5_indices and len(top5_indices) > 0:
-                    top1_idx = top5_indices[0]
-                    top1_conf = top5_confs[0]
-                    top1_char = class_names[top1_idx]
+    # ===== Phân tích kết quả Stage3 → gán lại cho từng plate =====
+    for plate_idx, pdata in enumerate(plate_data):
+        if pdata is None:
+            continue
 
-                    # Dùng conf3 (threshold từ settings) thay vì CHAR_MIN_CONF hardcoded
-                    # conf3 = 0.3 cho ảnh, 0.7 cho video (như code gốc)
-                    if top1_conf >= conf3:
-                        all_chars_text.append(top1_char)
-                        all_chars_confs.append(top1_conf)
+        s1_conf = pdata["s1_conf"]
+        x1, y1, x2, y2 = pdata["bbox"]
+        sorted_bboxes = pdata["sorted_bboxes"]
+        plate_char_indices = pdata["plate_char_indices"]
+
+        all_chars_text = []
+        all_chars_confs = []
+        all_topk_per_char = []
+
+        for global_idx in plate_char_indices:
+            if global_idx < len(all_s3_results):
+                result = all_s3_results[global_idx]
+                if result.probs is not None:
+                    top5_indices = result.probs.top5
+                    top5_confs = result.probs.top5conf.tolist()
+                    class_names = result.names
+
+                    if top5_indices and len(top5_indices) > 0:
+                        top1_idx = top5_indices[0]
+                        top1_conf = top5_confs[0]
+                        top1_char = class_names[top1_idx]
+
+                        if top1_conf >= conf3:
+                            all_chars_text.append(top1_char)
+                            all_chars_confs.append(top1_conf)
+                        else:
+                            all_chars_text.append("?")
+                            all_chars_confs.append(0.0)
+
+                        topk = [(class_names[idx], conf) for idx, conf in zip(top5_indices, top5_confs)]
+                        all_topk_per_char.append(topk)
                     else:
                         all_chars_text.append("?")
                         all_chars_confs.append(0.0)
-
-                    # Lấy alternatives cho format correction (top-2 trở đi)
-                    topk = []
-                    for idx, conf in zip(top5_indices, top5_confs):
-                        topk.append((class_names[idx], conf))
-                    all_topk_per_char.append(topk)
+                        all_topk_per_char.append([])
                 else:
                     all_chars_text.append("?")
                     all_chars_confs.append(0.0)
@@ -415,26 +443,21 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
                 all_chars_confs.append(0.0)
                 all_topk_per_char.append([])
 
-            actual_char_bboxes.append(bbox)
-
         if not all_chars_text:
             continue
 
-        # Sort lại cho khớp
-        sorted_bboxes_final = actual_char_bboxes
         sorted_chars = all_chars_text
         sorted_confs = all_chars_confs
         sorted_topk = all_topk_per_char
 
         plate_text = "".join(sorted_chars)
-
         plate_text = correct_format(plate_text, sorted_confs, sorted_topk)
 
         plate_length = _get_plate_length(plate_text)
         if len(plate_text) != plate_length and len(plate_text) > plate_length:
             plate_text = plate_text[:plate_length]
 
-        # Confidence = Geometric Mean (như notebook gốc — chính xác hơn arithmetic mean)
+        # Confidence = Geometric Mean
         if sorted_confs:
             product = 1.0
             for c in sorted_confs:
@@ -443,7 +466,7 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
         else:
             plate_confidence = s1_conf
 
-        # Tính alt_text — ký tự thay thế có confidence cao nhất
+        # Tính alt_text
         alt_text = None
         alt_confidence = None
         for i in range(len(sorted_topk)):
@@ -465,21 +488,14 @@ def run_inference(image_source, conf1=None, conf2=None, conf3=None, mode="image"
             "char_confs": sorted_confs,
         }
         if return_crop:
-            plate_entry["plate_crop_img"] = plate_crop
+            plate_entry["plate_crop_img"] = pdata["plate_crop"]
         plates.append(plate_entry)
-
-    # ===== POST-PROCESSING: Giữ nguyên ALL plates (như code gốc verified) =====
-    # Code gốc KHÔNG filter ở đây — việc validate để caller xử lý
-    # (filter quá mạnh ở đây sẽ loại bỏ plates hợp lệ khi Stage 3 miss 1-2 ký tự)
-    print(f"[DEBUG-PP] Final plates: {len(plates)} plates")
-    for i, p in enumerate(plates):
-        clean_text = p["plate_text"].replace("-", "").replace("?", "")
-        print(f"[DEBUG-PP]   Plate {i}: text='{p['plate_text']}', clean='{clean_text}', len={len(clean_text)}, conf={p['plate_confidence']:.4f}")
 
     # Deduplicate — giữ detection tốt nhất cho cùng 1 vị trí
     if len(plates) > 1:
         plates = _deduplicate_plates(plates)
 
+    logger.debug("[PIPELINE] Final: %d plates", len(plates))
     return plates
 
 

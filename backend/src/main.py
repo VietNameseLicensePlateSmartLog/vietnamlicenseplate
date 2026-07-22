@@ -85,9 +85,35 @@ async def lifespan(app: FastAPI):
             conn.execute(text(
                 "ALTER TABLE detections ADD COLUMN IF NOT EXISTS camera_id INTEGER"
             ))
+            # IP Camera connection fields
+            conn.execute(text(
+                "ALTER TABLE cameras ADD COLUMN IF NOT EXISTS stream_type VARCHAR(20) DEFAULT 'rtsp'"
+            ))
+            conn.execute(text(
+                "ALTER TABLE cameras ADD COLUMN IF NOT EXISTS username VARCHAR(100)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE cameras ADD COLUMN IF NOT EXISTS password_encrypted VARCHAR(200)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE cameras ADD COLUMN IF NOT EXISTS connect_timeout INTEGER DEFAULT 10"
+            ))
+            conn.execute(text(
+                "ALTER TABLE cameras ADD COLUMN IF NOT EXISTS reconnect_interval INTEGER DEFAULT 5"
+            ))
+            conn.execute(text(
+                "ALTER TABLE cameras ADD COLUMN IF NOT EXISTS max_reconnect_attempts INTEGER DEFAULT 10"
+            ))
+            conn.execute(text(
+                "ALTER TABLE cameras ADD COLUMN IF NOT EXISTS last_connected_at TIMESTAMP"
+            ))
+            conn.execute(text(
+                "ALTER TABLE cameras ADD COLUMN IF NOT EXISTS last_error TEXT"
+            ))
             conn.commit()
+            logger.info("Auto-migration: camera IP connection fields added (if not exist).")
         except Exception as e:
-            logger.warning("Migration skip stream_url/camera_id: %s", e)
+            logger.warning("Migration skip: %s", e)
 
     # ── Reset database (chỉ khi RESET_DB=1 trong env) ──
     if os.getenv("RESET_DB") == "1":
@@ -156,33 +182,49 @@ async def lifespan(app: FastAPI):
                 Camera(
                     name="Cam Cổng Chính",
                     rtsp_url="",
+                    stream_type="rtsp",
                     region_id=region_map.get("Camera Cổng Chính"),
                     is_active=False,
                     fps_target=10,
+                    connect_timeout=10,
+                    reconnect_interval=5,
+                    max_reconnect_attempts=10,
                     description="Camera giám sát cổng chính tòa nhà",
                 ),
                 Camera(
                     name="Cam Cổng Phụ",
                     rtsp_url="",
+                    stream_type="rtsp",
                     region_id=region_map.get("Camera Cổng Phụ"),
                     is_active=False,
                     fps_target=10,
+                    connect_timeout=10,
+                    reconnect_interval=5,
+                    max_reconnect_attempts=10,
                     description="Camera giám sát cổng phụ",
                 ),
                 Camera(
                     name="Cam Hầm Gửi Xe A",
                     rtsp_url="",
+                    stream_type="rtsp",
                     region_id=region_map.get("Camera Hầm Gửi Xe A"),
                     is_active=False,
                     fps_target=10,
+                    connect_timeout=10,
+                    reconnect_interval=5,
+                    max_reconnect_attempts=10,
                     description="Camera giám sát lối vào hầm A",
                 ),
                 Camera(
                     name="Cam Hầm Gửi Xe B",
                     rtsp_url="",
+                    stream_type="rtsp",
                     region_id=region_map.get("Camera Hầm Gửi Xe B"),
                     is_active=False,
                     fps_target=10,
+                    connect_timeout=10,
+                    reconnect_interval=5,
+                    max_reconnect_attempts=10,
                     description="Camera giám sát lối vào hầm B",
                 ),
             ]

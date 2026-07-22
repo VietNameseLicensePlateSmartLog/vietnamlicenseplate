@@ -1,7 +1,7 @@
 """Camera Controller — thin delegation → CameraService."""
 from sqlalchemy.orm import Session
 from src.modules.camera.service import CameraService
-from src.modules.camera.schemas import CameraCreate, CameraUpdate
+from src.modules.camera.schemas import CameraCreate, CameraUpdate, CameraTestRequest
 
 
 class CameraController:
@@ -33,3 +33,7 @@ class CameraController:
     @staticmethod
     def reset_all(db: Session):
         return CameraService.reset_all(db)
+
+    @staticmethod
+    async def test_connection(db: Session, camera_id: int | None, data: CameraTestRequest):
+        return await CameraService.test_connection(db, camera_id, data)

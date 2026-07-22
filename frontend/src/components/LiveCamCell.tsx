@@ -15,6 +15,25 @@ interface Props {
   onFullscreen: () => void
 }
 
+const IPC_HISTORY_KEY = 'livecam_ip_history'
+const MAX_IP_HISTORY = 10
+
+function getIpHistory(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    return JSON.parse(localStorage.getItem(IPC_HISTORY_KEY) || '[]')
+  } catch {
+    return []
+  }
+}
+
+function saveIpToHistory(ipAddress: string) {
+  if (!ipAddress.trim()) return
+  const history = getIpHistory().filter(h => h !== ipAddress)
+  history.unshift(ipAddress)
+  localStorage.setItem(IPC_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_IP_HISTORY)))
+}
+
 export default function LiveCamCell({ camera, onUpdateIp, onFullscreen }: Props) {
   const parseStreamUrl = (url: string | null) => {
     if (!url) return { ip: '', port: '8080' }
@@ -32,7 +51,10 @@ export default function LiveCamCell({ camera, onUpdateIp, onFullscreen }: Props)
   const [isHovering, setIsHovering] = useState(false)
   const [streamError, setStreamError] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [showIpHistory, setShowIpHistory] = useState(false)
+  const [ipHistory, setIpHistory] = useState<string[]>([])
   const imgRef = useRef<HTMLImageElement>(null)
+  const ipInputRef = useRef<HTMLInputElement>(null)
 
   const isStreaming = !!camera.stream_url && !streamError
   const hasConfig = !!camera.stream_url
@@ -41,7 +63,21 @@ export default function LiveCamCell({ camera, onUpdateIp, onFullscreen }: Props)
     if (!ip.trim()) return
     setConnecting(true)
     setStreamError(false)
-    const url = `http://${ip.trim()}:${port}/video`
+    saveIpToHistory(ip.trim())
+    // Tách IP và port nếu user nhập kèm port trong ô IP
+    // VD: "192.168.1.100:8080" → host="192.168.1.100", port="8080"
+    const raw = ip.trim()
+    let host = raw
+    let effectivePort = port
+    const colonIdx = raw.lastIndexOf(':')
+    if (colonIdx > 0) {
+      const candidatePort = raw.slice(colonIdx + 1)
+      if (/^\d{1,5}$/.test(candidatePort)) {
+        host = raw.slice(0, colonIdx)
+        effectivePort = candidatePort
+      }
+    }
+    const url = `http://${host}:${effectivePort}/video`
     await onUpdateIp(camera.id, url)
     setConnecting(false)
   }
@@ -130,22 +166,64 @@ export default function LiveCamCell({ camera, onUpdateIp, onFullscreen }: Props)
             Nhập IP để bắt đầu stream
           </div>
 
-          <input
-            type="text"
-            placeholder="IP (VD: 192.168.1.100)"
-            value={ip}
-            onChange={e => setIp(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleConnect()}
-            style={inputStyle}
-            onFocus={e => {
-              e.currentTarget.style.borderColor = 'var(--primary)'
-              e.currentTarget.style.boxShadow = '0 0 0 3px var(--primary-glow)'
-            }}
-            onBlur={e => {
-              e.currentTarget.style.borderColor = 'var(--border-color)'
-              e.currentTarget.style.boxShadow = 'none'
-            }}
-          />
+          <div style={{ width: '80%', maxWidth: 240, position: 'relative' }}>
+            <input
+              ref={ipInputRef}
+              type="text"
+              placeholder="IP (VD: 192.168.1.100)"
+              value={ip}
+              onChange={e => setIp(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleConnect()}
+              style={inputStyle}
+              onFocus={e => {
+                e.currentTarget.style.borderColor = 'var(--primary)'
+                e.currentTarget.style.boxShadow = '0 0 0 3px var(--primary-glow)'
+                const history = getIpHistory()
+                setIpHistory(history)
+                if (history.length > 0) setShowIpHistory(true)
+              }}
+              onBlur={e => {
+                e.currentTarget.style.borderColor = 'var(--border-color)'
+                e.currentTarget.style.boxShadow = 'none'
+                // Delay để dropdown click kịp register
+                setTimeout(() => setShowIpHistory(false), 150)
+              }}
+            />
+            {showIpHistory && ipHistory.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+                marginTop: 4, background: 'rgba(20, 20, 30, 0.97)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                overflow: 'hidden',
+              }}>
+                {ipHistory.map((savedIp, idx) => (
+                  <div
+                    key={savedIp + idx}
+                    onMouseDown={() => {
+                      setIp(savedIp)
+                      setShowIpHistory(false)
+                    }}
+                    style={{
+                      padding: '0.5rem 0.8rem',
+                      fontSize: '0.82rem',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      transition: 'background 0.15s',
+                      borderBottom: idx < ipHistory.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.15)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <i className="fa-solid fa-clock-rotate-left" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <span style={{ fontFamily: 'var(--font-mono, monospace)' }}>{savedIp}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input

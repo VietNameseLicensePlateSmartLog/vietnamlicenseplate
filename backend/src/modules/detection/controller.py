@@ -24,6 +24,10 @@ class PredictController:
         return await PredictService.handle_websocket(websocket)
 
     @staticmethod
+    async def handle_websocket_ip(websocket: WebSocket):
+        return await PredictService.handle_websocket_ip(websocket)
+
+    @staticmethod
     async def get_preview_frame(task_id: str):
         return await PredictService.get_preview_frame(task_id)
 

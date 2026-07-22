@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 interface Camera {
   id: number
@@ -14,6 +14,8 @@ interface Props {
 }
 
 export default function FullscreenView({ camera, onClose }: Props) {
+  const [retryCount, setRetryCount] = useState(0)
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -22,9 +24,14 @@ export default function FullscreenView({ camera, onClose }: Props) {
     return () => window.removeEventListener('keydown', handleKey)
   }, [onClose])
 
-  if (!camera.stream_url) return null
+  // Chỉ thêm cache-buster khi retry, KHÔNG dùng Date.now()
+  const streamUrl = useMemo(() => {
+    const base = camera.stream_url || ''
+    const sep = base.includes('?') ? '&' : '?'
+    return retryCount > 0 ? `${base}${sep}_retry=${retryCount}` : base
+  }, [camera.stream_url, retryCount])
 
-  const streamUrl = camera.stream_url + (camera.stream_url.includes('?') ? '&' : '?') + 't=' + Date.now()
+  if (!camera.stream_url) return null
 
   return (
     <div

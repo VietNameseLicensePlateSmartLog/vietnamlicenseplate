@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { useIPCameraWebSocket, ConnectionStatus } from '@/hooks/useIPCameraWebSocket';
 import { API_BASE } from '@/lib/api';
 import SnapshotModal from './SnapshotModal';
 
@@ -57,6 +58,13 @@ export default function RealtimeTab() {
   const [systemCameras, setSystemCameras] = useState<{ id: number; name: string }[]>([]);
   const [selectedSystemCameraId, setSelectedSystemCameraId] = useState<number | null>(null);
 
+  // ── IP Camera mode state ──
+  const [cameraMode, setCameraMode] = useState<'webcam' | 'ip'>('webcam');
+  const [ipCameras, setIpCameras] = useState<{ id: number; name: string; rtsp_url: string; stream_url: string; stream_type: string; is_online: boolean; region_name: string | null }[]>([]);
+  const [selectedIpCameraId, setSelectedIpCameraId] = useState<number | null>(null);
+  const [ipError, setIpError] = useState('');
+  const ipFrameImageRef = useRef<HTMLImageElement | null>(null);
+
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
   const realtimeCanvasRef = useRef<HTMLCanvasElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -68,6 +76,8 @@ export default function RealtimeTab() {
   const sentFrameSizeRef = useRef({ width: 640, height: 480 });
   const drawLoopActiveRef = useRef(false);
   const sendSingleFrameRef = useRef<() => void>(() => {});
+  const [detectionEnabled, setDetectionEnabled] = useState(false);
+  const detectionEnabledRef = useRef(false);
 
   // Lắng nghe kết quả nhận dạng từ WebSocket
   // results = finalized plates (đã lưu DB, hiển thị history)
@@ -89,6 +99,7 @@ export default function RealtimeTab() {
 
   // Khi WebSocket kết nối thành công, bắt đầu gửi frame
   const handleConnected = useCallback(() => {
+    if (!detectionEnabledRef.current) return;
     console.log('WebSocket connected, bắt đầu gửi frame');
     sendSingleFrameRef.current();
   }, []);
@@ -99,17 +110,86 @@ export default function RealtimeTab() {
     onConnected: handleConnected,
   });
 
+  // IP Camera WebSocket hook
+  const handleIpFrame = useCallback((base64Frame: string, frameSize: { width: number; height: number }) => {
+    sentFrameSizeRef.current = frameSize;
+    if (ipFrameImageRef.current) {
+      ipFrameImageRef.current.src = `data:image/jpeg;base64,${base64Frame}`;
+    }
+  }, []);
+
+  const handleIpResults = useCallback((results: PlateResult[], activePlates?: PlateResult[]) => {
+    const displayPlates = activePlates && activePlates.length > 0 ? activePlates : results;
+    currentDetectionsRef.current = displayPlates;
+    processRealtimeDetections(results);
+  }, []);
+
+  const handleIpStatusChange = useCallback((newStatus: ConnectionStatus) => {
+    if (newStatus === 'connected') {
+      setShowPlaceholder(false);
+      setIpError('');
+    } else if (newStatus === 'error') {
+      // Error message handled by onError
+    } else if (newStatus === 'idle') {
+      setShowPlaceholder(true);
+    }
+  }, []);
+
+  const handleIpError = useCallback((message: string) => {
+    setIpError(message);
+  }, []);
+
+  const ipCameraWs = useIPCameraWebSocket({
+    onResults: handleIpResults,
+    onFrame: handleIpFrame,
+    onStatusChange: handleIpStatusChange,
+    onError: handleIpError,
+  });
+
   // Load cameras khi component mount — tự động xin quyền nếu chưa có
   useEffect(() => {
     loadCameras();
   }, []);
 
-  // Load danh sách system cameras từ backend
+  // Load danh sách IP cameras từ backend
   useEffect(() => {
     fetch(`${API_BASE}/cameras`)
       .then(res => res.ok ? res.json() : [])
-      .then(data => setSystemCameras(Array.isArray(data) ? data.map((c: any) => ({ id: c.id, name: c.name })) : []))
+      .then(data => {
+        if (Array.isArray(data)) {
+          setSystemCameras(data.map((c: any) => ({ id: c.id, name: c.name })));
+          setIpCameras(data.filter((c: any) => c.rtsp_url || c.stream_url).map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            rtsp_url: c.rtsp_url || '',
+            stream_url: c.stream_url || '',
+            stream_type: c.stream_type || 'rtsp',
+            is_online: c.is_online,
+            region_name: c.region_name,
+          })));
+        }
+      })
       .catch(() => {});
+  }, []);
+
+  // Quản lý WebSocket dựa trên detectionEnabled — chỉ connect webcam WS khi ở webcam mode
+  useEffect(() => {
+    detectionEnabledRef.current = detectionEnabled;
+    if (!isStreamingRef.current) return;
+    // IP camera mode có WebSocket riêng, không dùng webcam WS
+    if (cameraMode === 'ip') return;
+
+    if (detectionEnabled) {
+      connect();
+    } else {
+      disconnect();
+      currentDetectionsRef.current = [];
+    }
+  }, [detectionEnabled, connect, disconnect, cameraMode]);
+
+  // Toggle nhận diện
+  const toggleDetection = useCallback(() => {
+    setDetectionEnabled(prev => !prev);
   }, []);
 
   async function loadCameras(): Promise<MediaDeviceInfo[]> {
@@ -164,7 +244,9 @@ export default function RealtimeTab() {
         }
 
         ctx!.drawImage(video!, 0, 0, canvas!.width, canvas!.height);
-        drawDetectionsOnCanvas(ctx!, canvas!);
+        if (detectionEnabledRef.current) {
+          drawDetectionsOnCanvas(ctx!, canvas!);
+        }
       }
 
       requestAnimationFrame(drawFrame);
@@ -211,9 +293,9 @@ export default function RealtimeTab() {
     });
   }
 
-  // Gửi một frame đơn lẻ sang server
-  const sendSingleFrame = useCallback(() => {
-    if (!isStreamingRef.current) return;
+  // Gửi một frame đơn lẻ sang server (dùng createImageBitmap để encode ngoài main thread)
+  const sendSingleFrame = useCallback(async () => {
+    if (!isStreamingRef.current || !detectionEnabledRef.current) return;
 
     const video = webcamVideoRef.current;
     const canvas = hiddenCanvasRef.current;
@@ -234,9 +316,26 @@ export default function RealtimeTab() {
     sentFrameSizeRef.current = { width: canvas.width, height: canvas.height };
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const base64Data = canvas.toDataURL('image/jpeg', 0.6);
 
-    sendFrame(base64Data, 0.5, 0.5, 0.3, null, selectedSystemCameraId);
+    try {
+      const bitmap = await createImageBitmap(canvas);
+      const offscreen = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const offCtx = offscreen.getContext('2d')!;
+      offCtx.drawImage(bitmap, 0, 0);
+      const blob = await offscreen.convertToBlob({ type: 'image/jpeg', quality: 0.6 });
+      bitmap.close();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (isStreamingRef.current && detectionEnabledRef.current && reader.result) {
+          sendFrame(reader.result as string, 0.5, 0.5, 0.3, null, selectedSystemCameraId);
+        }
+      };
+      reader.readAsDataURL(blob);
+    } catch {
+      // Fallback: toDataURL nếu createImageBitmap không hỗ trợ JPEG
+      const base64Data = canvas.toDataURL('image/jpeg', 0.6);
+      sendFrame(base64Data, 0.5, 0.5, 0.3, null, selectedSystemCameraId);
+    }
   }, [sendFrame, selectedSystemCameraId]);
 
   // Sync ref để handleResults/handleConnected có thể gọi qua ref
@@ -405,9 +504,7 @@ export default function RealtimeTab() {
         }
       }
 
-      // Connect WebSocket — bắt đầu gửi frame khi kết nối thành công
-      connect();
-
+      // WebSocket và draw loop sẽ bắt đầu khi user bật nhận diện (detectionEnabled → true)
       startLocalDrawingLoop();
     } catch (err) {
       const error = err as Error;
@@ -427,6 +524,8 @@ export default function RealtimeTab() {
   function stopCamera() {
     isStreamingRef.current = false;
     drawLoopActiveRef.current = false;
+    detectionEnabledRef.current = false;
+    setDetectionEnabled(false);
     currentDetectionsRef.current = [];
     setIsStreaming(false);
 
@@ -447,6 +546,101 @@ export default function RealtimeTab() {
     activePlatesRef.current = {};
     historyRecordsRef.current = [];
     setHistoryRecords([]);
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // IP Camera Mode
+  // ════════════════════════════════════════════════════════════════════
+
+  const ipDrawLoopActiveRef = useRef(false);
+
+  // Vẽ frame IP camera lên canvas (continuous loop)
+  const startIpDrawLoop = useCallback(() => {
+    const canvas = realtimeCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ipDrawLoopActiveRef.current = true;
+
+    function drawFrame() {
+      if (!ipDrawLoopActiveRef.current) return;
+
+      const img = ipFrameImageRef.current;
+      if (img && img.complete && img.naturalWidth > 0) {
+        if (canvas.width !== img.naturalWidth) {
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        if (detectionEnabledRef.current) {
+          drawDetectionsOnCanvas(ctx, canvas);
+        }
+      }
+
+      requestAnimationFrame(drawFrame);
+    }
+
+    requestAnimationFrame(drawFrame);
+  }, []);
+
+  // Kết nối IP camera từ dropdown (dùng hook)
+  function connectIpCamera() {
+    if (!selectedIpCameraId) {
+      alert('Vui lòng chọn camera từ danh sách.');
+      return;
+    }
+
+    setIpError('');
+    setShowPlaceholder(true);
+
+    // Pre-create Image element for frame rendering
+    if (!ipFrameImageRef.current) {
+      ipFrameImageRef.current = new Image();
+    }
+
+    // Kết nối qua hook — backend tự lấy URL từ DB dựa trên camera_id
+    ipCameraWs.connect(selectedIpCameraId, 0.5, 0.5, 0.3, null);
+
+    setIsStreaming(true);
+    isStreamingRef.current = true;
+    startIpDrawLoop();
+  }
+
+  // Ngắt kết nối IP camera
+  function disconnectIpCamera() {
+    ipDrawLoopActiveRef.current = false;
+    isStreamingRef.current = false;
+    detectionEnabledRef.current = false;
+    setDetectionEnabled(false);
+    currentDetectionsRef.current = [];
+    setIsStreaming(false);
+
+    ipCameraWs.disconnect();
+
+    setShowPlaceholder(true);
+
+    activePlatesRef.current = {};
+    historyRecordsRef.current = [];
+    setHistoryRecords([]);
+  }
+
+  // Chuyển đổi giữa Webcam ↔ IP Camera
+  function switchCameraMode(mode: 'webcam' | 'ip') {
+    if (mode === cameraMode) return;
+
+    // Dừng session hiện tại nếu đang chạy
+    if (isStreamingRef.current) {
+      if (cameraMode === 'webcam') {
+        stopCamera();
+      } else {
+        disconnectIpCamera();
+      }
+    }
+
+    setCameraMode(mode);
+    setIpError('');
+    setSelectedIpCameraId(null);
   }
 
   const openModal = useCallback((recordId: string) => {
@@ -479,16 +673,67 @@ export default function RealtimeTab() {
             </div>
 
             <div className="camera-actions-row mb-4">
-              {!isStreaming ? (
-                <button className="btn btn-primary btn-block" onClick={startCamera}>
-                  <i className="fa-solid fa-play"></i> Bắt đầu Camera
-                </button>
+              {cameraMode === 'webcam' ? (
+                !isStreaming ? (
+                  <button className="btn btn-primary btn-block" onClick={startCamera}>
+                    <i className="fa-solid fa-play"></i> Bắt đầu Camera
+                  </button>
+                ) : (
+                  <button className="btn btn-danger btn-block" onClick={stopCamera}>
+                    <i className="fa-solid fa-stop"></i> Dừng Camera
+                  </button>
+                )
               ) : (
-                <button className="btn btn-danger btn-block" onClick={stopCamera}>
-                  <i className="fa-solid fa-stop"></i> Dừng Camera
-                </button>
+                // IP Camera mode: nút trạng thái (kết nối/ngắt ở sidebar)
+                <div style={{
+                  padding: '0.75rem 1rem', borderRadius: 8, textAlign: 'center', fontSize: '0.85rem',
+                  background: ipCameraWs.status === 'connected' ? 'rgba(0,200,83,0.08)' : 'rgba(120,144,156,0.08)',
+                  border: `1px solid ${ipCameraWs.status === 'connected' ? 'rgba(0,200,83,0.25)' : 'rgba(120,144,156,0.2)'}`,
+                  color: 'var(--text-secondary)',
+                }}>
+                  {ipCameraWs.status === 'connected' ? (
+                    <><i className="fa-solid fa-circle" style={{ color: '#00c853', marginRight: '0.4rem', fontSize: '0.6rem' }}></i> Đang kết nối IP Camera</>
+                  ) : (
+                    <><i className="fa-solid fa-circle" style={{ color: '#90a4ae', marginRight: '0.4rem', fontSize: '0.6rem' }}></i> Chọn camera ở panel bên phải để kết nối</>
+                  )}
+                </div>
               )}
             </div>
+
+            {/* Toggle nhận diện — chỉ hiển thị khi camera đang chạy */}
+            {isStreaming && (
+              <div className="detection-toggle-row" style={{
+                display: 'flex', alignItems: 'center', gap: '0.75rem',
+                padding: '0.75rem 1rem', borderRadius: 8,
+                background: detectionEnabled ? 'rgba(0,200,83,0.08)' : 'rgba(120,144,156,0.08)',
+                border: `1px solid ${detectionEnabled ? 'rgba(0,200,83,0.25)' : 'rgba(120,144,156,0.2)'}`,
+                transition: 'all 0.2s ease',
+              }}>
+                <button
+                  onClick={toggleDetection}
+                  style={{
+                    position: 'relative', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                    background: detectionEnabled ? '#00c853' : '#90a4ae',
+                    transition: 'background 0.2s ease', flexShrink: 0,
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 2, left: detectionEnabled ? 22 : 2,
+                    width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                    transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  }} />
+                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text)' }}>
+                    <i className="fa-solid fa-microscope" style={{ marginRight: '0.4rem', color: detectionEnabled ? '#00c853' : '#90a4ae' }}></i>
+                    Nhận diện biển số
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {detectionEnabled ? 'Đang nhận diện — camera có thể bị giật nhẹ' : 'Tắt — xem camera mượt 60fps'}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Hidden canvas for frame capture */}
             <canvas ref={hiddenCanvasRef} style={{ display: 'none' }}></canvas>
@@ -514,12 +759,21 @@ export default function RealtimeTab() {
                 ref={webcamVideoRef}
                 autoPlay
                 playsInline
-                style={{ display: 'none' }}
+                style={{
+                  width: '100%',
+                  borderRadius: 8,
+                  objectFit: 'contain',
+                  display: showPlaceholder || detectionEnabled || cameraMode === 'ip' ? 'none' : 'block',
+                }}
               ></video>
               <canvas
                 ref={realtimeCanvasRef}
                 id="realtime-canvas"
-                style={{ display: showPlaceholder ? 'none' : 'block' }}
+                style={{
+                  display: showPlaceholder
+                    ? 'none'
+                    : (cameraMode === 'ip' ? 'block' : (detectionEnabled ? 'block' : 'none')),
+                }}
               ></canvas>
             </div>
           </div>
@@ -534,49 +788,194 @@ export default function RealtimeTab() {
                 <p>Chọn nguồn camera đầu vào cho luồng xử lý thời gian thực</p>
               </div>
               <div style={{ padding: '0 1.5rem 1.5rem 1.5rem' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label htmlFor="camera-select" className="form-label" style={{ fontSize: '0.85rem' }}>
-                    <i className="fa-solid fa-camera" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}></i>
-                    Thiết bị Camera hoạt động:
-                  </label>
-                  <select
-                    id="camera-select"
-                    className="form-select"
-                    value={selectedDeviceId}
-                    onChange={(e) => setSelectedDeviceId(e.target.value)}
+                {/* Mode Toggle: Webcam | IP Camera */}
+                <div style={{
+                  display: 'flex', borderRadius: 8, overflow: 'hidden',
+                  border: '1px solid rgba(120,144,156,0.25)', marginBottom: '1rem',
+                }}>
+                  <button
+                    onClick={() => switchCameraMode('webcam')}
                     disabled={isStreaming}
+                    style={{
+                      flex: 1, padding: '0.6rem 0', border: 'none', cursor: isStreaming ? 'not-allowed' : 'pointer',
+                      fontWeight: 600, fontSize: '0.82rem', transition: 'all 0.2s',
+                      background: cameraMode === 'webcam' ? 'var(--primary, #6c5ce7)' : 'transparent',
+                      color: cameraMode === 'webcam' ? '#fff' : 'var(--text-secondary, #90a4ae)',
+                      opacity: isStreaming ? 0.6 : 1,
+                    }}
                   >
-                    {cameras.length === 0 ? (
-                      <option value="">Không tìm thấy camera nào</option>
-                    ) : (
-                      cameras.map((device, index) => (
-                        <option key={device.deviceId} value={device.deviceId}>
-                          {device.label || `Camera ${index + 1}`}
-                        </option>
-                      ))
-                    )}
-                  </select>
+                    <i className="fa-solid fa-camera" style={{ marginRight: '0.4rem' }}></i>
+                    Webcam
+                  </button>
+                  <button
+                    onClick={() => switchCameraMode('ip')}
+                    disabled={isStreaming}
+                    style={{
+                      flex: 1, padding: '0.6rem 0', border: 'none', borderLeft: '1px solid rgba(120,144,156,0.25)',
+                      cursor: isStreaming ? 'not-allowed' : 'pointer',
+                      fontWeight: 600, fontSize: '0.82rem', transition: 'all 0.2s',
+                      background: cameraMode === 'ip' ? 'var(--primary, #6c5ce7)' : 'transparent',
+                      color: cameraMode === 'ip' ? '#fff' : 'var(--text-secondary, #90a4ae)',
+                      opacity: isStreaming ? 0.6 : 1,
+                    }}
+                  >
+                    <i className="fa-solid fa-network-wired" style={{ marginRight: '0.4rem' }}></i>
+                    IP Camera
+                  </button>
                 </div>
 
-                {/* Chọn camera IP (system camera) để gắn với kết quả nhận diện */}
-                {systemCameras.length > 0 && (
-                  <div className="form-group" style={{ margin: 0, marginTop: '1rem' }}>
-                    <label htmlFor="system-camera-select" className="form-label" style={{ fontSize: '0.85rem' }}>
-                      <i className="fa-solid fa-video" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}></i>
-                      Gắn với Camera IP:
-                    </label>
-                    <select
-                      id="system-camera-select"
-                      className="form-select"
-                      value={selectedSystemCameraId ?? ''}
-                      onChange={(e) => setSelectedSystemCameraId(e.target.value ? Number(e.target.value) : null)}
-                    >
-                      <option value="">Không gắn camera</option>
-                      {systemCameras.map(cam => (
-                        <option key={cam.id} value={cam.id}>{cam.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                {/* ── Webcam Mode Config ── */}
+                {cameraMode === 'webcam' && (
+                  <>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label htmlFor="camera-select" className="form-label" style={{ fontSize: '0.85rem' }}>
+                        <i className="fa-solid fa-camera" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}></i>
+                        Thiết bị Camera hoạt động:
+                      </label>
+                      <select
+                        id="camera-select"
+                        className="form-select"
+                        value={selectedDeviceId}
+                        onChange={(e) => setSelectedDeviceId(e.target.value)}
+                        disabled={isStreaming}
+                      >
+                        {cameras.length === 0 ? (
+                          <option value="">Không tìm thấy camera nào</option>
+                        ) : (
+                          cameras.map((device, index) => (
+                            <option key={device.deviceId} value={device.deviceId}>
+                              {device.label || `Camera ${index + 1}`}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    {/* Chọn camera IP (system camera) để gắn với kết quả nhận diện */}
+                    {systemCameras.length > 0 && (
+                      <div className="form-group" style={{ margin: 0, marginTop: '1rem' }}>
+                        <label htmlFor="system-camera-select" className="form-label" style={{ fontSize: '0.85rem' }}>
+                          <i className="fa-solid fa-video" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}></i>
+                          Gắn với Camera IP:
+                        </label>
+                        <select
+                          id="system-camera-select"
+                          className="form-select"
+                          value={selectedSystemCameraId ?? ''}
+                          onChange={(e) => setSelectedSystemCameraId(e.target.value ? Number(e.target.value) : null)}
+                        >
+                          <option value="">Không gắn camera</option>
+                          {systemCameras.map(cam => (
+                            <option key={cam.id} value={cam.id}>{cam.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* ── IP Camera Mode Config ── */}
+                {cameraMode === 'ip' && (
+                  <>
+                    {/* Chọn camera từ danh sách DB */}
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label htmlFor="ip-camera-select" className="form-label" style={{ fontSize: '0.85rem' }}>
+                        <i className="fa-solid fa-network-wired" style={{ color: 'var(--primary)', marginRight: '0.5rem' }}></i>
+                        Chọn Camera IP:
+                      </label>
+                      <select
+                        id="ip-camera-select"
+                        className="form-select"
+                        value={selectedIpCameraId ?? ''}
+                        onChange={(e) => setSelectedIpCameraId(e.target.value ? Number(e.target.value) : null)}
+                        disabled={ipCameraWs.status === 'connected' || ipCameraWs.status === 'reconnecting'}
+                        style={{ fontSize: '0.85rem' }}
+                      >
+                        <option value="">-- Chọn camera --</option>
+                        {ipCameras.map(cam => (
+                          <option key={cam.id} value={cam.id}>
+                            {cam.name} ({cam.stream_type.toUpperCase()}) {cam.is_online ? '🟢' : '⚪'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Hiển thị thông tin camera đã chọn */}
+                    {selectedIpCameraId && (() => {
+                      const cam = ipCameras.find(c => c.id === selectedIpCameraId);
+                      if (!cam) return null;
+                      return (
+                        <div style={{
+                          marginTop: '0.75rem', padding: '0.6rem 0.8rem', borderRadius: 8,
+                          background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)',
+                          fontSize: '0.8rem',
+                        }}>
+                          <div style={{ color: '#60a5fa', fontWeight: 600, marginBottom: '4px' }}>{cam.name}</div>
+                          <div style={{ color: '#94a3b8', fontSize: '0.75rem', wordBreak: 'break-all' }}>
+                            {cam.rtsp_url || cam.stream_url || 'Chưa có URL'}
+                          </div>
+                          {cam.region_name && (
+                            <div style={{ color: '#64748b', fontSize: '0.72rem', marginTop: '2px' }}>
+                              Vùng: {cam.region_name}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Nút Kết nối / Ngắt kết nối */}
+                    <div style={{ marginTop: '1rem' }}>
+                      {ipCameraWs.status !== 'connected' && ipCameraWs.status !== 'reconnecting' ? (
+                        <button
+                          className="btn btn-primary btn-block"
+                          onClick={connectIpCamera}
+                          disabled={!selectedIpCameraId || ipCameraWs.status === 'connecting'}
+                          style={{ opacity: !selectedIpCameraId || ipCameraWs.status === 'connecting' ? 0.6 : 1 }}
+                        >
+                          {ipCameraWs.status === 'connecting' ? (
+                            <>
+                              <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2, display: 'inline-block', verticalAlign: 'middle', marginRight: '0.5rem' }}></div>
+                              Đang kết nối...
+                            </>
+                          ) : (
+                            <>
+                              <i className="fa-solid fa-plug"></i> Kết nối Camera
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-danger btn-block"
+                          onClick={disconnectIpCamera}
+                        >
+                          <i className="fa-solid fa-stop"></i> Ngắt kết nối
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Hiển thị lỗi / reconnecting status */}
+                    {ipCameraWs.status === 'reconnecting' && (
+                      <div style={{
+                        marginTop: '0.75rem', padding: '0.6rem 0.8rem', borderRadius: 8,
+                        background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)',
+                        color: '#fbbf24', fontSize: '0.8rem',
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      }}>
+                        <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, display: 'inline-block', borderColor: '#fbbf24', borderTopColor: 'transparent' }}></div>
+                        Mất kết nối — đang thử lại ({ipCameraWs.reconnectAttempt}/5)...
+                      </div>
+                    )}
+                    {ipError && ipCameraWs.status !== 'reconnecting' && (
+                      <div style={{
+                        marginTop: '0.75rem', padding: '0.6rem 0.8rem', borderRadius: 8,
+                        background: 'rgba(239,83,80,0.1)', border: '1px solid rgba(239,83,80,0.3)',
+                        color: '#ef5350', fontSize: '0.8rem',
+                      }}>
+                        <i className="fa-solid fa-circle-exclamation" style={{ marginRight: '0.4rem' }}></i>
+                        {ipError}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

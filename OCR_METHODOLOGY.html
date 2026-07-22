@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phương Pháp Luận OCR — Vietnam License Plate Recognition</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-alt: #334155;
+      --border: #475569;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-dim: #0ea5e9;
+      --green: #4ade80;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --purple: #a78bfa;
+      --code-bg: #0d1117;
+      --table-header: #1e3a5f;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: var(--accent);
+      border-bottom: 3px solid var(--accent-dim);
+      padding-bottom: 0.75rem;
+      margin-bottom: 2rem;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      color: var(--accent);
+      margin-top: 3rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h3 {
+      font-size: 1.15rem;
+      color: var(--yellow);
+      margin-top: 1.5rem;
+      margin-bottom: 0.6rem;
+    }
+
+    p {
+      margin-bottom: 0.8rem;
+    }
+
+    strong {
+      color: var(--accent);
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2.5rem 0;
+    }
+
+    /* Table of Contents */
+    .toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .toc h2 {
+      margin-top: 0;
+      border-bottom: none;
+      font-size: 1.1rem;
+      color: var(--text);
+    }
+
+    .toc ol {
+      padding-left: 1.5rem;
+    }
+
+    .toc li {
+      margin-bottom: 0.3rem;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.92rem;
+    }
+
+    thead th {
+      background: var(--table-header);
+      color: var(--accent);
+      text-align: left;
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--border);
+    }
+
+    tbody td {
+      padding: 0.5rem 0.8rem;
+      border: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    tbody tr:nth-child(even) {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* Code blocks */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.2rem;
+      overflow-x: auto;
+      margin: 0.8rem 0 1.2rem;
+      font-size: 0.88rem;
+      line-height: 1.55;
+    }
+
+    code {
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    pre code {
+      color: var(--text);
+    }
+
+    /* Inline code */
+    p code, li code, td code {
+      background: var(--surface-alt);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.87rem;
+      color: var(--green);
+    }
+
+    /* Lists */
+    ul, ol {
+      padding-left: 1.5rem;
+      margin-bottom: 0.8rem;
+    }
+
+    li {
+      margin-bottom: 0.3rem;
+    }
+
+    /* Utility classes */
+    .highlight {
+      color: var(--yellow);
+    }
+
+    .keyword {
+      color: var(--purple);
+    }
+
+    .comment {
+      color: var(--text-muted);
+    }
+
+    .string {
+      color: var(--green);
+    }
+
+    .arrow {
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    .valid { color: var(--green); }
+    .invalid { color: var(--red); }
+    .tag {
+      display: inline-block;
+      background: var(--surface-alt);
+      padding: 0.1rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      color: var(--yellow);
+      margin-right: 0.3rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+<h1>Phương Pháp Luận OCR — Vietnam License Plate Recognition</h1>
+
+<!-- Table of Contents -->
+<nav class="toc">
+  <h2>Mục lục</h2>
+  <ol>
+    <li><a href="#sec1">Tổng quan kiến trúc</a></li>
+    <li><a href="#sec2">Giai đoạn 1: Phát hiện biển số (Plate Detection)</a></li>
+    <li><a href="#sec3">Giai đoạn 2: Phát hiện ký tự (Character Detection)</a></li>
+    <li><a href="#sec4">Giai đoạn 3: Phân loại ký tự (Character Classification)</a></li>
+    <li><a href="#sec5">Tiền xử lý ảnh (Preprocessing)</a></li>
+    <li><a href="#sec6">Sửa chữa định dạng theo vị trí (Position-based Correction)</a></li>
+    <li><a href="#sec7">Tính toán Confidence</a></li>
+    <li><a href="#sec8">Tracking &amp; Character Voting (Video/Realtime)</a></li>
+    <li><a href="#sec9">Xác thực biển số (Validation)</a></li>
+    <li><a href="#sec10">Sơ đồ tổng thể pipeline</a></li>
+  </ol>
+</nav>
+
+<hr>
+
+<!-- Section 1 -->
+<h2 id="sec1">1. Tổng quan kiến trúc</h2>
+
+<p>Hệ thống sử dụng kiến trúc <strong>3-stage YOLOv8</strong> thay vì OCR truyền thống (CTCRNN, attention-based). Đây là phương pháp <strong>detection-based OCR</strong> — mỗi ký tự được phát hiện và phân loại riêng biệt bằng object detection, không dùng recognition/sequence modeling.</p>
+
+<pre><code>┌─────────────────────────────────────────────────────────┐
+│                    3-STAGE YOLO PIPELINE                │
+│                                                         │
+│  Stage 1: Plate Detection      (YOLOv8 Object Detect)   │
+│      ↓ crop plate                                       │
+│  Stage 2: Char Detection       (YOLOv8 Object Detect)   │
+│      ↓ crop each char                                   │
+│  Stage 3: Char Classification  (YOLOv8 Classification)  │
+│      ↓ classify 64x64 crop                              │
+│  Position Correction + Confidence + Validation          │
+└─────────────────────────────────────────────────────────┘</code></pre>
+
+<h3>Ưu điểm kiến trúc này:</h3>
+<ul>
+  <li>Mỗi stage có thể fine-tune tối ưu</li>
+  <li>Không phụ thuộc vào thứ tự ký tự (rotation-invariant)</li>
+  <li>Hoạt động tốt với biển số 1 dòng và 2 dòng</li>
+  <li>Batch inference ở Stage 3 → hiệu suất cao</li>
+</ul>
+
+<h3>Nhược điểm:</h3>
+<ul>
+  <li>Phụ thuộc vào chất lượng Stage 2 (phát hiện thiếu ký tự = mất ký tự)</li>
+  <li>Không có language model / sequence correction</li>
+  <li>Sai số tích lũy qua 3 stage</li>
+</ul>
+
+<hr>
+
+<!-- Section 2 -->
+<h2 id="sec2">2. Giai đoạn 1: Phát hiện biển số (Plate Detection)</h2>
+
+<h3>Model</h3>
+<table>
+  <thead><tr><th>Thuộc tính</th><th>Giá trị</th></tr></thead>
+  <tbody>
+    <tr><td>File</td><td><code>stage1_detector_robust.pt</code> (18.4 MB)</td></tr>
+    <tr><td>Kiểu</td><td>YOLOv8 Object Detection</td></tr>
+    <tr><td>Classes</td><td>1 (biển số xe)</td></tr>
+    <tr><td>Input size</td><td>1280px (image) / 1024px (video)</td></tr>
+    <tr><td>NMS IoU threshold</td><td>0.5</td></tr>
+    <tr><td>Confidence threshold</td><td>0.4 (cả image &amp; video)</td></tr>
+  </tbody>
+</table>
+
+<h3>Quy trình</h3>
+<pre><code>Ảnh gốc (full frame)
+  → Resize về 1280px (hoặc 1024px cho video)
+  → YOLOv8 predict (conf=0.4, iou=0.5)
+  → NMS lọc bỏ box trùng lặp (IoU > 0.5)
+  → Output: list các bounding box [(x1,y1,x2,y2), ...]</code></pre>
+
+<h3>Chi tiết kỹ thuật</h3>
+<ul>
+  <li>NMS được thực hiện thủ công (<code>nms_boxes()</code>) với greedy approach, sắp xếp theo diện tích giảm dần</li>
+  <li>Sau NMS, mỗi box được IoU-match lại với raw results để lấy lại confidence gốc</li>
+  <li>Chỉ lấy box có diện tích lớn nhất khi trùng lặp (non-max suppression thực sự)</li>
+</ul>
+
+<hr>
+
+<!-- Section 3 -->
+<h2 id="sec3">3. Giai đoạn 2: Phát hiện ký tự (Character Detection)</h2>
+
+<h3>Model</h3>
+<table>
+  <thead><tr><th>Thuộc tính</th><th>Giá trị</th></tr></thead>
+  <tbody>
+    <tr><td>File</td><td><code>stage2_char_detector.pt</code> (24.5 MB)</td></tr>
+    <tr><td>Kiểu</td><td>YOLOv8 Object Detection</td></tr>
+    <tr><td>Classes</td><td>1 (ký tự trên biển số)</td></tr>
+    <tr><td>Input size</td><td>640px (cropped plate)</td></tr>
+    <tr><td>NMS IoU threshold</td><td>0.3</td></tr>
+    <tr><td>Confidence threshold</td><td>0.3 (cả image &amp; video)</td></tr>
+  </tbody>
+</table>
+
+<h3>Quy trình</h3>
+<pre><code>Cropped plate (từ Stage 1)
+  → Tiền xử lý (deskew + padding + CLAHE/sharpen)
+  → YOLOv8 predict (conf=0.3, iou=0.3)
+  → NMS lọc bỏ box trùng (IoU > 0.3)
+  → filter_outlier_boxes(): loại box ngoài [0.7x, 1.3x] median
+  → separate_characters_by_row(): phân tách thành 1-2 dòng
+  → Sort each row left → right
+  → Output: sorted list character bounding boxes</code></pre>
+
+<h3>Lọc outlier nâng cao (filter_outlier_boxes)</h3>
+<ul>
+  <li>Dùng <strong>median</strong> thay vì mean (robust hơn với outlier)</li>
+  <li>Loại box &lt; 70% median <span class="invalid">VÀ</span> box &gt; 130% median</li>
+  <li>Nếu tất cả bị loại → trả về danh sách gốc (an toàn)</li>
+</ul>
+
+<h3>Phân tách dòng (separate_characters_by_row)</h3>
+<ul>
+  <li>Tính Y-centroid của mỗi box</li>
+  <li>Tìm gap lớn nhất giữa các centroid liền kề</li>
+  <li><strong>Điều kiện tách dòng:</strong>
+    <ul>
+      <li><code>max_gap &gt; median_gap × 1.5</code> (gap lớn hơn 50% so với gap trung bình)</li>
+      <li><code>max_gap &gt; avg_height × 0.4</code> (gap lớn hơn 40% chiều cao ký tự)</li>
+    </ul>
+  </li>
+  <li>Mỗi dòng được sort left → right riêng</li>
+</ul>
+
+<hr>
+
+<!-- Section 4 -->
+<h2 id="sec4">4. Giai đoạn 3: Phân loại ký tự (Character Classification)</h2>
+
+<h3>Model</h3>
+<table>
+  <thead><tr><th>Thuộc tính</th><th>Giá trị</th></tr></thead>
+  <tbody>
+    <tr><td>File</td><td><code>stage3_char_classify.pt</code> (12.8 MB)</td></tr>
+    <tr><td>Kiểu</td><td>YOLOv8 Classification</td></tr>
+    <tr><td>Classes</td><td>30 (0-9, A-Z ngoại trừ I, O, J, Q, W)</td></tr>
+    <tr><td>Input size</td><td>64×64 px</td></tr>
+    <tr><td>Confidence threshold</td><td>0.5 (image) / 0.4 (video)</td></tr>
+  </tbody>
+</table>
+
+<h3>Tập ký tự hợp lệ (30 classes)</h3>
+<pre><code>0 1 2 3 4 5 6 7 8 9
+A B C D E F G H K L M N P R S T U V X Z</code></pre>
+<p><strong>Loại bỏ:</strong> <span class="invalid">I, O, J, Q, W</span> (nhầm lẫn thị giác với số hoặc không dùng trên biển VN)</p>
+
+<h3>Batch inference (tối ưu hiệu suất)</h3>
+<pre><code><span class="comment"># THAY VÌ: predict từng ký tự → 8-9 calls/plate</span>
+<span class="comment"># LÀM: gom tất cả ký tự từ TẤT CẢ plates → 1 batch call duy nhất</span>
+all_char_images = [...]  <span class="comment"># flat list across all plates</span>
+results = s3_model.predict(all_char_images, imgsz=64)
+
+<span class="comment"># Mapping ngược về từng plate</span>
+<span class="keyword">for</span> plate_idx, char_indices <span class="keyword">in</span> enumerate(plate_char_indices):
+    <span class="keyword">for</span> char_idx <span class="keyword">in</span> char_indices:
+        top5 = results[char_idx].probs.top5      <span class="comment"># ['5', '6', 'S', ...]</span>
+        top5conf = results[char_idx].probs.top5conf  <span class="comment"># [0.82, 0.12, 0.03, ...]</span></code></pre>
+
+<h3>Xử lý đầu ra</h3>
+<ul>
+  <li>Lấy <strong>top-5 predictions</strong> cho mỗi ký tự</li>
+  <li>Nếu top-1 confidence ≥ threshold → dùng ký tự đó</li>
+  <li>Nếu top-1 confidence &lt; threshold → đánh dấu <code>"?"</code> (uncertain)</li>
+  <li>Top-5 alternatives được lưu để dùng trong position-based correction</li>
+</ul>
+
+<hr>
+
+<!-- Section 5 -->
+<h2 id="sec5">5. Tiền xử lý ảnh (Preprocessing)</h2>
+
+<h3>5.1 Deskew (chỉnh nghiêng)</h3>
+<pre><code>Ảnh plate
+  → Grayscale
+  → OTSU threshold (BINARY_INV để contour trên ký tự trắng)
+  → Tìm contour lớn nhất (nếu &lt; 50px → giữ nguyên)
+  → minAreaRect → lấy góc xoay
+  → Clamp góc về [-45°, +45°]
+  → Nếu |góc| &lt; 0.5° → không xoay
+  → WarpAffine xoay lại (INTER_CUBIC, border đen)</code></pre>
+
+<h3>5.2 Preprocess plate cho Stage 2</h3>
+<pre><code>Plate (sau deskew)
+  → Thêm 8px padding đen (tránh YOLO cắt sát viền)
+  → PHÂN NHÁNH:
+    ├── Image mode: Grayscale → Sharpen → RGB
+    └── Video mode: Grayscale → CLAHE (clipLimit=3.0, 8×8) → RGB</code></pre>
+
+<p><strong>Tại sao CLAHE cho video?</strong> Video thường có nhiễu và ánh sáng không đều hơn ảnh tĩnh. CLAHE (Contrast Limited Adaptive Histogram Equalization) cải thiện contrast cục bộ mà không khuếch đại nhiễu.</p>
+
+<h3>5.3 Character threshold (cho Stage 3)</h3>
+<pre><code>Char crop (64×64)
+  → Grayscale
+  → CLAHE (clipLimit=3.0, 8×8)
+  → RGB</code></pre>
+
+<p><strong>Tại sao CLAHE thay vì binary threshold?</strong> CLAHE giữ lại chi tiết anti-aliasing và nét mỏng mà binary threshold sẽ phá hủy. Điều này quan trọng cho accuracy của Stage 3.</p>
+
+<hr>
+
+<!-- Section 6 -->
+<h2 id="sec6">6. Sửa chữa định dạng theo vị trí (Position-based Correction)</h2>
+
+<h3>Quy tắc vị trí biển số Việt Nam</h3>
+<table>
+  <thead><tr><th>Vị trí</th><th>Loại</th><th>Giải thích</th></tr></thead>
+  <tbody>
+    <tr><td>0-1</td><td><strong>BẮT BUỘC digit</strong></td><td>Mã tỉnh (VD: 29, 51, 16)</td></tr>
+    <tr><td>2</td><td><strong>BẮT BUỘC letter</strong></td><td>Loại xe (A, B, C, ...) từ <code>ABCDEFGHKLMNPRSTUVXZ</code></td></tr>
+    <tr><td>3</td><td>Digit hoặc Letter</td><td>Seri</td></tr>
+    <tr><td>4+</td><td>Ưu tiên digit</td><td>Số đăng ký (thường là digit)</td></tr>
+  </tbody>
+</table>
+
+<h3>Thuật toán sửa chữa</h3>
+<pre><code><span class="keyword">for</span> position <span class="keyword">in</span> plate_text:
+    <span class="keyword">if</span> top1_char <span class="keyword">is</span> INVALID <span class="keyword">for</span> this position:
+        <span class="comment"># Tìm trong top-5 alternatives ký tự hợp lệ nhất</span>
+        <span class="keyword">for</span> alt_char, alt_conf <span class="keyword">in</span> top5_alternatives:
+            <span class="keyword">if</span> alt_char IS VALID <span class="keyword">for</span> this position:
+                replace(position, alt_char)
+                <span class="keyword">break</span>
+        <span class="comment"># Nếu không có alt hợp lệ → giữ nguyên top-1</span></code></pre>
+
+<h3>Ví dụ thực tế</h3>
+<pre><code>OCR detect: B 1 A 3 2 7 1 8
+             <span class="invalid">↑</span>
+             Vị trí 0 cần digit, nhưng 'B' là letter
+             → Thử alternatives: [('B', 0.85), ('8', 0.72), ('3', 0.10)]
+             → '<span class="valid">8</span>' là digit → thay thế
+
+Kết quả:  <span class="valid">8</span> 1 A 3 2 7 1 8  ✓</code></pre>
+
+<hr>
+
+<!-- Section 7 -->
+<h2 id="sec7">7. Tính toán Confidence</h2>
+
+<h3>Confidence từng ký tự (Image mode)</h3>
+<ul>
+  <li>Lấy trực tiếp từ top-1 class probability của Stage 3</li>
+  <li>Nếu &lt; threshold → confidence = 0.0 (ký tự là "?")</li>
+</ul>
+
+<h3>Confidence từng ký tự (Video mode — Character Voting)</h3>
+<p>Khi tracking finalize, confidence được tính dựa trên <strong>multi-frame voting</strong>:</p>
+<pre><code>margin = (winner_votes - runner_up_votes) / total_votes
+winner_avg_conf = sum(yolo_conf của winner) / winner_votes
+char_confidence[pos] = margin × winner_avg_conf</code></pre>
+<ul>
+  <li><strong>margin</strong>: mức độ "áp đảo" của ký tự thắng so với á quân</li>
+  <li><strong>winner_avg_conf</strong>: confidence trung bình từ YOLO qua các frame</li>
+  <li>Kết quả: ký tự thắng càng rõ ràng + YOLO conf cao → confidence cao</li>
+</ul>
+
+<h3>Confidence cả plate (Geometric Mean)</h3>
+<pre><code>plate_confidence = (char_conf[0] × char_conf[1] × ... × char_conf[n]) ^ (1/n)</code></pre>
+
+<p><strong>Tại sao geometric mean?</strong></p>
+<ul>
+  <li>Arithmetic mean: một ký tự conf=0.1 kéo plate xuống nhẹ</li>
+  <li><strong>Geometric mean</strong>: một ký tự conf=0.1 kéo plate xuống <span class="invalid">MẠNH</span></li>
+  <li>→ Bảo thủ hơn, ưu tiên plate có <strong>TẤT CẢ</strong> ký tự đều chắc chắn</li>
+</ul>
+
+<h3>Alt text &amp; Alt confidence</h3>
+<ul>
+  <li>Duyệt top-5 của từng vị trí, tìm ký tự khác top-1 có confidence cao nhất</li>
+  <li>Alt plate confidence = geometric mean với term tại vị trí alt bị giảm theo tỷ lệ runner/winner</li>
+</ul>
+
+<hr>
+
+<!-- Section 8 -->
+<h2 id="sec8">8. Tracking &amp; Character Voting (Video/Realtime)</h2>
+
+<h3>CentroidTracker — Tổng quan</h3>
+<pre><code>Frame t:   detect plates → match với tracks hiện tại → update/finalize
+Frame t+1: detect plates → match → update/finalize
+...</code></pre>
+
+<h3>Matching Criteria</h3>
+<p>Detection được match với track bằng <strong>combined score</strong>:</p>
+<pre><code>combined_score = IOU × 0.4 + TextSimilarity × 0.4 + CentroidSimilarity × 0.2</code></pre>
+
+<table>
+  <thead><tr><th>Thành phần</th><th>Cách tính</th><th>Trọng số</th></tr></thead>
+  <tbody>
+    <tr><td>IOU</td><td>Giao bounding box</td><td>40%</td></tr>
+    <tr><td>Text Similarity</td><td>Ký tự khớp vị trí / max_length</td><td>40%</td></tr>
+    <tr><td>Centroid Similarity</td><td>1 - (khoảng cách / 100px)</td><td>20%</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Điều kiện match (ít nhất 1 trong 2):</strong></p>
+<ul>
+  <li><code>IOU ≥ 0.3</code> (trùng vị trí nhiều)</li>
+  <li><code>combined_score ≥ 0.25</code> (tổng điểm đủ cao)</li>
+</ul>
+<p><strong>BẮT BUỘC:</strong> Text similarity ≥ 0.5, nếu không → tạo track mới</p>
+
+<h3>Character Voting (Bỏ phiếu ký tự)</h3>
+<pre><code><span class="comment"># Mỗi frame, ký tự detect được cộng vote</span>
+char_votes[position][character] += 1
+char_confs[position][character] += yolo_conf
+
+<span class="comment"># Khi finalize: ký tự có nhiều vote nhất thắng</span>
+winner = max(char_votes[pos], key=votes.get)</code></pre>
+
+<h3>Ví dụ</h3>
+<pre><code>Frame 1: "29A12345"  → votes: {0:{'2':1}, 1:{'9':1}, ...}
+Frame 2: "29A12345"  → votes: {0:{'2':2}, 1:{'9':2}, ...}
+Frame 3: "29A1234S"  → votes: {0:{'2':3}, 1:{'9':3}, ..., 7:{'5':2,'S':1}}
+→ Position 7: '<span class="valid">5</span>' thắng (2 votes vs 1) → final: "29A12345"</code></pre>
+
+<h3>Merge Buffer (Gộp tracks)</h3>
+<p>Khi một track finalize, nó được đưa vào <strong>merge buffer</strong>:</p>
+<ul>
+  <li>Nếu track mới có <strong>text giống hệt</strong> → gộp votes, giữ timestamp sớm nhất</li>
+  <li>Nếu track mới có <strong>edit distance ≤ 1</strong> VÀ gap thời gian ≤ 2s → gộp</li>
+  <li>TTL của merge buffer: 10 giây</li>
+</ul>
+<p><strong>Mục đích:</strong> Xe chạy qua camera có thể bị detect thành nhiều track ngắn. Merge buffer gộp chúng thành 1 detection cuối cùng với nhiều votes hơn → confidence cao hơn.</p>
+
+<h3>Finalized Buffer (Chống trùng lặp)</h3>
+<ul>
+  <li>Sau khi finalize, track được thêm vào finalized buffer (TTL = 5s, max 20 entries)</li>
+  <li>Detection mới match với buffer → <strong>skip</strong> (bỏ qua, không tạo track mới)</li>
+  <li>Match nếu <code>IOU ≥ 0.3</code> HOẶC <code>text_similarity ≥ 0.8</code></li>
+</ul>
+
+<h3>Thresholds cho Video</h3>
+<table>
+  <thead><tr><th>Threshold</th><th>Image</th><th>Video</th></tr></thead>
+  <tbody>
+    <tr><td>Stage 1 (plate detect)</td><td>0.4</td><td>0.4</td></tr>
+    <tr><td>Stage 2 (char detect)</td><td>0.3</td><td>0.3</td></tr>
+    <tr><td>Stage 3 (char classify)</td><td>0.5</td><td>0.4</td></tr>
+  </tbody>
+</table>
+<p>Video dùng threshold Stage 3 thấp hơn (0.4 vs 0.5) vì frame rate cao, bù đắp bằng multi-frame voting.</p>
+
+<hr>
+
+<!-- Section 9 -->
+<h2 id="sec9">9. Xác thực biển số (Validation)</h2>
+
+<h3>Regex patterns</h3>
+<pre><code><span class="comment"># Dân sự: 2 chữ số + 1 chữ cái + (tùy chọn separator) + 4-5 chữ số</span>
+PLATE_PATTERN = <span class="string">r'^(\d{2})([A-Z])[-.\s]?(\d{4,5})$'</span>
+
+<span class="comment"># Quân sự: 2 chữ số + 1 chữ cái + 1 chữ số + (separator) + 3-5 chữ số</span>
+MILITARY_PATTERN = <span class="string">r'^(\d{2})([A-Z])(\d{1})[-.\s]?(\d{3,5})$'</span></code></pre>
+
+<h3>Heuristic nới lỏng (fallback)</h3>
+<pre><code><span class="comment"># Nếu không match regex, thử heuristic:</span>
+<span class="keyword">if</span> len(text) >= 8
+   AND text[:2].isdigit()
+   AND text[2] <span class="keyword">in</span> VALID_LETTERS
+   AND percentage_of_digits(text[3:]) >= 70%
+→ pass</code></pre>
+
+<h3>Format Quality Score</h3>
+<pre><code>Length = 8:        +10 điểm (chuẩn)
+Length = 9-10:     +5 điểm
+Position 0 digit:  +5
+Position 1 digit:  +5
+Position 2 letter: +10 (quan trọng nhất)
+Position 3:        +3
+Position 4+: digit +2, letter +1, invalid -1</code></pre>
+<p>Plate chỉ được lưu vào DB nếu <code>format_score &gt; 0</code>.</p>
+
+<hr>
+
+<!-- Section 10 -->
+<h2 id="sec10">10. Sơ đồ tổng thể pipeline</h2>
+
+<pre><code>┌──────────────────────────────────────────────────────────────────┐
+│                        <span class="highlight">IMAGE MODE</span>                                │
+│                                                                  │
+│  Upload image → Stage 1 (1280px) → crop plates                   │
+│    │                                                             │
+│    ├── For each plate:                                           │
+│    │     Preprocess (deskew + CLAHE + padding)                   │
+│    │     → Stage 2 (640px) → char bounding boxes                 │
+│    │     → filter + sort rows                                    │
+│    │     → Crop chars → resize 64×64                             │
+│    │                                                             │
+│    ├── Batch Stage 3 (all chars) → top-5 per char                │
+│    │                                                             │
+│    ├── Position correction (top-5 alternatives)                  │
+│    ├── Confidence = geometric mean of char confs                 │
+│    ├── Dedup plates (IoU > 0.4)                                  │
+│    │                                                             │
+│    └── Save to DB + Cloudinary snapshot                          │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                  <span class="highlight">VIDEO / REALTIME MODE</span>                        │
+│                                                                  │
+│  Frame t → Stage 1 → plates → preprocess → Stage 2 → chars       │
+│    → Batch Stage 3 → position correction                         │
+│    │                                                             │
+│    ├── Filter: valid_plate() + format_score > 0 + no "?"         │
+│    │                                                             │
+│    ├── CentroidTracker.update(valid_plates)                      │
+│    │     ├── Match: IOU×40% + TextSim×40% + CentroidSim×20%      │
+│    │     ├── Update: add votes, update centroid                  │
+│    │     ├── New: create PlateTrack if no match                  │
+│    │     └── Miss: miss_count++ → finalize if ≥ 4 misses         │
+│    │                                                             │
+│    ├── Finalize: voted_text + plate_confidence (geometric mean)  │
+│    │     ├── Merge buffer: gộp tracks giống nhau (edit ≤ 1)      │
+│    │     └── Finalized buffer: chống trùng lặp (TTL 5s)          │
+│    │                                                             │
+│    └── Save finalized to DB + snapshot                           │
+└──────────────────────────────────────────────────────────────────┘</code></pre>
+
+<hr>
+
+<!-- Appendix -->
+<h2>Phụ lục: Bảng so sánh với OCR truyền thống</h2>
+
+<table>
+  <thead>
+    <tr><th>Khía cạnh</th><th>Phương pháp này (Detection-based)</th><th>OCR truyền thống (CTCRNN/Attention)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Kiến trúc</td><td>3-stage YOLO</td><td>Encoder-Decoder end-to-end</td></tr>
+    <tr><td>Xử lý 2 dòng</td><td>Separate rows by Y-centroid</td><td>Thường cần preprocessing riêng</td></tr>
+    <tr><td>Độ dài output</td><td>Tự động (từ Stage 2 detect)</td><td>Thường cố định hoặc beam search</td></tr>
+    <tr><td>Training data</td><td>Bounding box labels per char</td><td>Image-text pairs</td></tr>
+    <tr><td>Robustness với rotation</td><td>Tốt (YOLO rotation-invariant)</td><td>Kém hơn</td></tr>
+    <tr><td>Speed</td><td>~4 FPS (realtime)</td><td>Thường chậm hơn</td></tr>
+    <tr><td>Language correction</td><td>Không có (chỉ position rules)</td><td>Có thể tích hợp LM</td></tr>
+  </tbody>
+</table>
+
+</div>
+</body>
+</html>

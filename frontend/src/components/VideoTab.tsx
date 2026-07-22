@@ -34,7 +34,7 @@ function formatETA(seconds: number): string {
   return `~${hrs}h ${remainMins} phút`;
 }
 
-export default function VideoTab() {
+export default function VideoTab({ visible }: { visible: boolean }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -44,6 +44,7 @@ export default function VideoTab() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startPollingRef = useRef<((id: string) => void) | null>(null);
 
   // Dọn dẹp interval khi component unmount
   useEffect(() => {
@@ -152,6 +153,32 @@ export default function VideoTab() {
       }
     }, 1000);
   }, []);
+
+  // Đồng bộ startPollingRef với startPolling mới nhất
+  useEffect(() => {
+    startPollingRef.current = startPolling;
+  }, [startPolling]);
+
+  // Pause polling khi tab bị ẩn, resume khi hiện lại
+  useEffect(() => {
+    if (!taskId) return;
+    const isProcessing = taskStatus?.status === 'processing' || (taskStatus === null && taskId !== null);
+
+    if (!visible && isProcessing) {
+      // Tab bị ẩn + đang processing → tạm dừng polling
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      if (previewIntervalRef.current) {
+        clearInterval(previewIntervalRef.current);
+        previewIntervalRef.current = null;
+      }
+    } else if (visible && isProcessing && startPollingRef.current) {
+      // Tab hiện lại + đang processing → tiếp tục polling
+      startPollingRef.current(taskId);
+    }
+  }, [visible, taskId, taskStatus?.status]);
 
   const handleProcess = useCallback(async () => {
     if (!selectedFile) return;

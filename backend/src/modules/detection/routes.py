@@ -42,3 +42,8 @@ async def cancel_task(task_id: str, db: Session = Depends(get_db)):
 @router.websocket("/ws/lpr")
 async def websocket_lpr(websocket: WebSocket):
     await PredictController.handle_websocket(websocket)
+
+@router.websocket("/ws/lpr-ip")
+async def websocket_lpr_ip(websocket: WebSocket):
+    """WebSocket nhận diện biển số từ IP camera — backend tự đọc frame."""
+    await PredictController.handle_websocket_ip(websocket)
